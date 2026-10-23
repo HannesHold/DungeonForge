@@ -252,14 +252,21 @@ public sealed class EventCommands : InteractionModuleBase<SocketInteractionConte
             await FollowupAsync(message, ephemeral: true);
     }
 
-    [SlashCommand("dfleaderboard", "Show the top 20 points totals")]
+    [SlashCommand("dfleaderboard", "Show every player's points")]
     public async Task LeaderboardAsync()
     {
-        await DeferAsync(ephemeral: true);
         if (!await CheckAccessAsync(CommandAccess.DungeoneerOrManager)) return;
 
-        foreach (var message in await _events.LeaderboardAsync())
-            await FollowupAsync(message, ephemeral: true);
+        var messages = await _events.LeaderboardAsync();
+        if (messages.Count == 0)
+        {
+            await RespondAsync("No points have been awarded yet.", ephemeral: true, allowedMentions: AllowedMentions.None);
+            return;
+        }
+
+        await RespondAsync(messages[0], ephemeral: true, allowedMentions: AllowedMentions.None);
+        for (var i = 1; i < messages.Count; i++)
+            await FollowupAsync(messages[i], ephemeral: true, allowedMentions: AllowedMentions.None);
     }
 
     // ---------------------------------------------------------------- helpers
@@ -311,7 +318,7 @@ public sealed class EventCommands : InteractionModuleBase<SocketInteractionConte
     {
         if (Context.Channel.Id != _channels.Manage)
         {
-            await FollowupAsync($"❌ This command only works in <#{_channels.Manage}>.", ephemeral: true);
+            await ReplyEphemeralAsync($"❌ This command only works in <#{_channels.Manage}>.");
             return false;
         }
 
@@ -325,9 +332,17 @@ public sealed class EventCommands : InteractionModuleBase<SocketInteractionConte
         var needed = access == CommandAccess.Manager
             ? $"**{_config.Global.Roles.Manager.Name}**"
             : $"**{_config.Global.Roles.Dungeoneer.Name}** or **{_config.Global.Roles.Manager.Name}**";
-        await FollowupAsync($"❌ You need the {needed} role to use this command.", ephemeral: true);
+        await ReplyEphemeralAsync($"❌ You need the {needed} role to use this command.");
         _log.Warn($"{EventRenderer.Mention(Context.User.Id)} tried to use /{(Context.Interaction as SocketSlashCommand)?.CommandName} without the required role.");
         return false;
+    }
+
+    /// <summary>Deferred commands follow up. /dfleaderboard answers with the interaction reply.</summary>
+    private Task ReplyEphemeralAsync(string text)
+    {
+        if (Context.Interaction.HasResponded)
+            return FollowupAsync(text, ephemeral: true, allowedMentions: AllowedMentions.None);
+        return RespondAsync(text, ephemeral: true, allowedMentions: AllowedMentions.None);
     }
 }
 

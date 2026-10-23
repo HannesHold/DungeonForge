@@ -174,8 +174,8 @@ public sealed class BotService : BackgroundService
             await _interactions.RegisterCommandsToGuildAsync(global.GuildId, deleteMissing: true);
 
             await _events.ReconcileAllAsync();
-            await _pointsBoard.RefreshBossTableAsync();
             await _pointsBoard.RefreshLeaderboardAsync();
+            await _pointsBoard.RefreshBossTableAsync();
 
             _log.Info($"Dungeon Forge is online as **{_client.CurrentUser.Username}** on **{guild.Name}**. " +
                       $"{_store.Events.Count} active event(s). Time zone: {_config.TimeZone.Id}.");

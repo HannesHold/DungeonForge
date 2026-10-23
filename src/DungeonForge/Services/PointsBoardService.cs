@@ -42,33 +42,63 @@ public sealed class PointsBoardService
     public async Task RefreshLeaderboardAsync() =>
         await RefreshAsync(async channel =>
         {
-            var ranked = PointsLogic.Leaderboard(_points.Entries);
-            var text = PointsBoardFormatter.FormatLeaderboard(ranked);
-            _state.LeaderboardMessageId = await UpsertAsync(channel, _state.LeaderboardMessageId, text);
+            var pages = PointsBoardFormatter.FormatLeaderboard(PointsLogic.Leaderboard(_points.Entries));
+            var previous = _state.LeaderboardMessageIds.ToList();
+            // Extra leaderboard messages are created at the bottom of the channel. Delete the boss table first
+            // when the page count grows, then post it again after the leaderboard so the order stays leaderboard, then bosses.
+            var repostBossTable = PointsBoardFormatter.LeaderboardGrowthMovesBossTable(
+                previous.Count, pages.Count, _state.BossTableMessageIds.Count);
+            if (repostBossTable)
+                await DeleteBossTableAsync(channel);
+
+            var next = new List<ulong>();
+            for (var i = 0; i < pages.Count; i++)
+            {
+                var existing = i < previous.Count ? previous[i] : 0UL;
+                next.Add(await UpsertAsync(channel, existing, pages[i]));
+            }
+
+            for (var i = pages.Count; i < previous.Count; i++)
+                await TryDeleteAsync(channel, previous[i]);
+
+            _state.LeaderboardMessageIds.Clear();
+            _state.LeaderboardMessageIds.AddRange(next);
+
+            if (repostBossTable)
+                await PostBossTableAsync(channel);
         });
 
     public async Task RefreshBossTableAsync() =>
-        await RefreshAsync(async channel =>
+        await RefreshAsync(PostBossTableAsync);
+
+    private async Task PostBossTableAsync(SocketTextChannel channel)
+    {
+        var (templates, _) = _definitions.LoadAll();
+        var messages = PointsBoardFormatter.FormatBossTable(templates, _config.Global.PointsPerBossKill);
+        if (messages.Count == 0)
+            messages = new[] { "**Raid boss points**\nNo raid templates found." };
+
+        var previous = _state.BossTableMessageIds.ToList();
+        var next = new List<ulong>();
+        for (var i = 0; i < messages.Count; i++)
         {
-            var (templates, _) = _definitions.LoadAll();
-            var messages = PointsBoardFormatter.FormatBossTable(templates, _config.Global.PointsPerBossKill);
-            if (messages.Count == 0)
-                messages = new[] { "**Raid boss points**\nNo raid templates found." };
+            var existing = i < previous.Count ? previous[i] : 0UL;
+            next.Add(await UpsertAsync(channel, existing, messages[i]));
+        }
 
-            var previous = _state.BossTableMessageIds.ToList();
-            var next = new List<ulong>();
-            for (var i = 0; i < messages.Count; i++)
-            {
-                var existing = i < previous.Count ? previous[i] : 0UL;
-                next.Add(await UpsertAsync(channel, existing, messages[i]));
-            }
+        for (var i = messages.Count; i < previous.Count; i++)
+            await TryDeleteAsync(channel, previous[i]);
 
-            for (var i = messages.Count; i < previous.Count; i++)
-                await TryDeleteAsync(channel, previous[i]);
+        _state.BossTableMessageIds.Clear();
+        _state.BossTableMessageIds.AddRange(next);
+    }
 
-            _state.BossTableMessageIds.Clear();
-            _state.BossTableMessageIds.AddRange(next);
-        });
+    private async Task DeleteBossTableAsync(SocketTextChannel channel)
+    {
+        foreach (var id in _state.BossTableMessageIds.ToList())
+            await TryDeleteAsync(channel, id);
+        _state.BossTableMessageIds.Clear();
+    }
 
     private async Task RefreshAsync(Func<SocketTextChannel, Task> write)
     {
@@ -125,7 +155,11 @@ public sealed class PointsBoardService
             {
                 if (await channel.GetMessageAsync(messageId) is IUserMessage existing)
                 {
-                    await existing.ModifyAsync(m => m.Content = text);
+                    await existing.ModifyAsync(m =>
+                    {
+                        m.Content = text;
+                        m.AllowedMentions = AllowedMentions.None;
+                    });
                     return existing.Id;
                 }
             }

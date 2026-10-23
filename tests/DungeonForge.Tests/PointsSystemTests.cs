@@ -243,19 +243,39 @@ public class PointsSystemTests
     }
 
     [Fact]
-    public void LeaderboardFormatter_CapsAndNotesTruncation_BossTableChunksAndAppliesOverrides()
+    public void LeaderboardFormatter_ListsEveryone_WithContinuousRanks_AndBossTableChunks()
     {
         var ranked = Enumerable.Range(1, 30).Select(i => ((ulong)i, 100 - i)).ToList();
-        var board = PointsBoardFormatter.FormatLeaderboard(ranked, cap: 25, maxLength: 2000);
-        Assert.Contains("Showing 25 of 30 players.", board);
-        Assert.Contains("<@1> — 99", board);
-        Assert.DoesNotContain("<@26>", board);
-        Assert.True(board.Length <= 2000);
+        var pages = PointsBoardFormatter.FormatLeaderboard(ranked, maxLength: 80);
+        Assert.True(pages.Count > 1);
+        Assert.All(pages, page => Assert.InRange(page.Length, 1, 80));
+        Assert.All(pages, page => Assert.DoesNotContain("… (truncated)", page));
+        Assert.Contains("**Points leaderboard**", pages[0]);
+        Assert.Contains("No points have been awarded yet.", Assert.Single(PointsBoardFormatter.FormatLeaderboard(Array.Empty<(ulong, int)>())));
 
-        var tight = PointsBoardFormatter.FormatLeaderboard(ranked, cap: 25, maxLength: 80);
-        Assert.True(tight.Length <= 80);
-        Assert.Contains("Showing", tight);
-        Assert.DoesNotContain("30 players.", tight.Split('\n')[0]);
+        var ranks = new List<int>();
+        foreach (var page in pages)
+        {
+            foreach (var line in page.Split('\n'))
+            {
+                if (line.Length == 0 || line.StartsWith("**", StringComparison.Ordinal))
+                    continue;
+                var dot = line.IndexOf('.');
+                Assert.True(dot > 0, line);
+                ranks.Add(int.Parse(line[..dot]));
+                Assert.Contains(line, page);
+            }
+        }
+
+        Assert.Equal(Enumerable.Range(1, 30), ranks);
+        Assert.Contains("<@1> — 99", pages[0]);
+        Assert.Contains("<@30> — 70", string.Join('\n', pages));
+        Assert.DoesNotContain(pages, page => page.Contains("Showing", StringComparison.Ordinal));
+
+        Assert.False(PointsBoardFormatter.LeaderboardGrowthMovesBossTable(1, 1, 2));
+        Assert.False(PointsBoardFormatter.LeaderboardGrowthMovesBossTable(3, 1, 2));
+        Assert.False(PointsBoardFormatter.LeaderboardGrowthMovesBossTable(0, 2, 0));
+        Assert.True(PointsBoardFormatter.LeaderboardGrowthMovesBossTable(1, 3, 2));
 
         var raids = new List<EventDefinition>
         {
@@ -287,6 +307,52 @@ public class PointsSystemTests
         Assert.Contains("Gamma — 10", text);
         Assert.Contains("Default points per kill: 10", text);
         Assert.Contains(messages, message => message.Contains("**Short Raid**", StringComparison.Ordinal) && message.Contains("Alpha"));
+    }
+
+    [Fact]
+    public async Task PointsChannelState_MigratesASingleLeaderboardMessageId()
+    {
+        var directory = Directory.CreateTempSubdirectory("df-points-channel").FullName;
+        var path = Path.Combine(directory, "points-channel.json");
+        await File.WriteAllTextAsync(path, """
+            {
+              "version": 1,
+              "leaderboardMessageId": 42,
+              "bossTableMessageIds": [7, 8]
+            }
+            """);
+
+        var store = new PointsChannelStore(path);
+        await store.LoadAsync();
+        Assert.Equal(new ulong[] { 42 }, store.LeaderboardMessageIds);
+        Assert.Equal(new ulong[] { 7, 8 }, store.BossTableMessageIds);
+
+        store.LeaderboardMessageIds.Add(43);
+        await store.SaveAsync();
+        var saved = await File.ReadAllTextAsync(path);
+        Assert.Contains("leaderboardMessageIds", saved);
+
+        var reloaded = new PointsChannelStore(path);
+        await reloaded.LoadAsync();
+        Assert.Equal(new ulong[] { 42, 43 }, reloaded.LeaderboardMessageIds);
+        Assert.Equal(new ulong[] { 7, 8 }, reloaded.BossTableMessageIds);
+
+        await File.WriteAllTextAsync(path, """
+            {
+              "version": 2,
+              "leaderboardMessageId": 99,
+              "leaderboardMessageIds": [],
+              "bossTableMessageIds": [1]
+            }
+            """);
+        var emptyList = new PointsChannelStore(path);
+        await emptyList.LoadAsync();
+        Assert.Empty(emptyList.LeaderboardMessageIds);
+        Assert.Equal(new ulong[] { 1 }, emptyList.BossTableMessageIds);
+
+        Assert.Equal(new ulong[] { 5 }, PointsChannelStore.MigrateLeaderboardIds(5, null));
+        Assert.Empty(PointsChannelStore.MigrateLeaderboardIds(5, Array.Empty<ulong>()));
+        Assert.Equal(new ulong[] { 3, 4 }, PointsChannelStore.MigrateLeaderboardIds(9, new ulong[] { 0, 3, 4 }));
     }
 
     [Fact]

@@ -9,7 +9,6 @@ public static class PointsLogic
     public const string CantAttendRole = "Cant-attend";
     public const string ManualAttendeeRole = "Attendee";
     public const int RecentEntryCount = 10;
-    public const int LeaderboardSize = 20;
 
     public readonly record struct RosterResult(bool Ok, string Message);
 

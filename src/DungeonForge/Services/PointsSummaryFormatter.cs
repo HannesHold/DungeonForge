@@ -74,12 +74,8 @@ public static class PointsSummaryFormatter
 
     public static IReadOnlyList<string> FormatLeaderboard(
         IReadOnlyList<(ulong UserId, int Total)> ranked,
-        int cap,
-        int maxLength = EventTemplateListFormatter.DiscordMessageLimit)
-    {
-        var text = PointsBoardFormatter.FormatLeaderboard(ranked, cap, maxLength, "Points leaderboard");
-        return new[] { text };
-    }
+        int maxLength = EventTemplateListFormatter.DiscordMessageLimit) =>
+        PointsBoardFormatter.FormatLeaderboard(ranked, maxLength);
 
     private static IReadOnlyList<string> Pack(IReadOnlyList<string> lines, int maxLength)
     {

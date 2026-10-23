@@ -104,7 +104,7 @@ public sealed class EventService
         await _gate.WaitAsync();
         try
         {
-            return PointsSummaryFormatter.FormatLeaderboard(PointsLogic.Leaderboard(_points.Entries), PointsLogic.LeaderboardSize);
+            return PointsSummaryFormatter.FormatLeaderboard(PointsLogic.Leaderboard(_points.Entries));
         }
         finally { _gate.Release(); }
     }
