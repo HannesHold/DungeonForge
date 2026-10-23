@@ -26,3 +26,8 @@ Data/
 *.corrupt-*
 .env
 *.secret.json
+
+## Docker bind mounts (seeded on first start; may contain the bot token and live state)
+docker/configurations/
+docker/event-configurations/
+docker/data/

@@ -181,6 +181,91 @@ Slash commands can take a few seconds to show up after the first start.
 
 > Note: persisted state lives next to the executable (`bin/Debug/net10.0/Data` when started from Visual Studio): `events.json` (events, kill snapshots, exclusions), `points.json` (append-only ledger), and `points-channel.json` (the two board message ids). Set `dataDirectory` to an absolute path if you want it somewhere stable. Run the published build for production use (`dotnet publish -c Release`).
 
+## Docker
+
+The image is framework-dependent and uses `mcr.microsoft.com/dotnet/runtime:10.0`. The same Dockerfile works on **linux/amd64** and **linux/arm64** (a 64-bit Raspberry Pi): build it on the machine that will run it. The bot process runs as user `dungeonforge` (uid 1000 unless you change the build arg). The entrypoint is root only long enough to seed empty folders and make those mounts writable by that user.
+
+`DUNGEONFORGE_TOKEN`, when it is set to a non-empty value, replaces the `token` field in `global.json`. The token can stay the placeholder in the file.
+
+State is the `dataDirectory` from `global.json`. The shipped value is `Data`, which the container resolves to `/app/Data`. That folder holds `events.json`, `points.json`, and `points-channel.json`. Compose mounts it from the host, so it survives image updates.
+
+### 1. Clone
+```
+git clone https://github.com/HannesHold/DungeonForge.git
+cd DungeonForge
+```
+
+### 2. Start, then edit the seeded config
+```
+docker compose up -d
+```
+The first start creates `docker/configurations`, `docker/event-configurations`, and `docker/data` when they are missing. Empty config and template folders receive the files shipped in the image. Files you already edited are not replaced. The container then exits, because the seeded `global.json` still has the placeholder token and `guildId` 0, and Compose starts it again until that is fixed (`restart: unless-stopped`).
+
+Stop it, then edit:
+```
+docker compose stop
+```
+* `docker/configurations/global.json` — set `guildId` (and `token`, unless you use the environment variable below). Channel and role names are already filled in.
+* `docker/event-configurations/` — the shipped raid and dungeon templates. Add or edit JSON here; this folder is what the running container reads.
+
+Token from the environment instead of the file: create a `.env` file next to `docker-compose.yml` (it is gitignored):
+```
+DUNGEONFORGE_TOKEN=your-bot-token
+```
+`guildId` still has to be set in `global.json`.
+
+If your host user is not uid 1000, build with your ids so you can edit the seeded files without `sudo`:
+```
+UID=$(id -u) GID=$(id -g) docker compose build
+```
+
+### 3. Run and watch the log
+```
+docker compose up -d
+docker compose logs -f dungeonforge
+```
+A healthy start prints `Dungeon Forge is online…`. Slash commands can take a few seconds to appear.
+
+### 4. Update
+```
+git pull
+docker compose up -d --build
+```
+New template files from the image are copied in when that file is not already in `docker/event-configurations`. Your `global.json`, edited templates, and `docker/data` stay as they are.
+
+### 5. Backup
+Copy `docker/data` (`events.json`, `points.json`, `points-channel.json`). Also copy `docker/configurations` and `docker/event-configurations` if you have changed them. Stop the container first if you want a quiet copy:
+```
+docker compose stop
+tar -czf dungeonforge-backup.tgz docker/data docker/configurations docker/event-configurations
+docker compose up -d
+```
+
+### systemd
+Compose already restarts the container with the Docker daemon (`unless-stopped`). To start that compose project at boot, save this as `/etc/systemd/system/dungeonforge.service` and set `WorkingDirectory` to the clone:
+```
+[Unit]
+Description=Dungeon Forge (Docker Compose)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/DungeonForge
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose stop
+
+[Install]
+WantedBy=multi-user.target
+```
+```
+sudo systemctl daemon-reload
+sudo systemctl enable --now dungeonforge
+```
+
+Without Docker, publish once (`dotnet publish src/DungeonForge -c Release -o /opt/dungeonforge`) and run the dll under systemd as the same kind of unit with `Type=simple`, `Restart=on-failure`, `WorkingDirectory=/opt/dungeonforge`, `ExecStart=/usr/bin/dotnet DungeonForge.dll`, and `Environment=DUNGEONFORGE_TOKEN=…`. Put `Configurations`, `EventConfigurations`, and `Data` in that directory. `dataDirectory` stays `Data` unless you point it at another absolute path.
+
 ## Adding a dungeon / raid
 
 Put a raid in `src/DungeonForge/EventConfigurations/Raids/<name>.json` and a dungeon in `src/DungeonForge/EventConfigurations/Dungeons/<name>.json`. A file directly in `EventConfigurations` (or in any other subfolder, at any depth) is still loaded. The file name (without `.json`) **must equal** `name`, and that name must be unique across all folders.
@@ -255,6 +340,9 @@ New files are picked up without restarting the bot only if they are in the *runn
 
 ```
 DungeonForge.sln
+Dockerfile                      framework-dependent image (linux/amd64 and linux/arm64)
+docker-compose.yml              service dungeonforge; mounts config, templates, and Data
+docker/entrypoint.sh            seeds empty mounts, then runs the bot as user dungeonforge
 src/DungeonForge/
   Program.cs                      Generic Host + DI wiring, graceful config errors
   Configurations/                 global.json, subscription-roles.json, fixed-subscription-roles.json

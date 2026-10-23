@@ -1,0 +1,19 @@
+# Dungeon Forge. Edit docker/configurations/global.json after the first start
+# (the image seeds it when the folder is empty). Token: set DUNGEONFORGE_TOKEN
+# in a .env file next to this compose file, or in the environment, to override the file.
+services:
+  dungeonforge:
+    build:
+      context: .
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    image: dungeonforge
+    restart: unless-stopped
+    environment:
+      DUNGEONFORGE_TOKEN: ${DUNGEONFORGE_TOKEN:-}
+      TZ: ${TZ:-Europe/Vienna}
+    volumes:
+      - ./docker/configurations:/app/Configurations
+      - ./docker/event-configurations:/app/EventConfigurations
+      - ./docker/data:/app/Data

@@ -1,0 +1,17 @@
+.git
+.github
+**/.vs
+**/.idea
+**/.vscode
+**/bin
+**/obj
+**/TestResults
+tests
+artifacts
+Data
+docker/configurations
+docker/event-configurations
+docker/data
+*.md
+*.user
+*.suo
