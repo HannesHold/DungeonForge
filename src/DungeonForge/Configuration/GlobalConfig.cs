@@ -35,7 +35,10 @@ public sealed class GlobalConfig
 
 public sealed class ChannelsConfig
 {
-    public NamedId Events { get; set; } = new() { Name = "dungeon-forge" };
+    /// <summary>Default name of the events channel. It may be a text channel or a forum channel.</summary>
+    public const string DefaultEventsName = "dungeon-forge-forum";
+
+    public NamedId Events { get; set; } = new() { Name = DefaultEventsName };
     public NamedId Manage { get; set; } = new() { Name = "dungeon-forge-manage" };
     public NamedId Log { get; set; } = new() { Name = "dungeon-forge-log" };
 

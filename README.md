@@ -11,9 +11,11 @@ The bot is generic: dungeons, roles, emoji, channel and Discord role names are a
 
 ## What it does
 
-* `/dfcreateevent <event> <date> <time>` (e.g. `/dfcreateevent MoltenCore40 24.10.2026 18:00`) creates a **standalone public thread**
-  in the **dungeon-forge** channel (named like `Molten Core – 24.10.2026 18:00`) and posts the event embed **inside that thread**.
-  The channel itself only lists threads. Discord also shows a small "thread created" system line in the parent channel for each thread; the bot leaves that line alone.
+* `/dfcreateevent <event> <date> <time>` (e.g. `/dfcreateevent MoltenCore40 24.10.2026 18:00`) creates an event in the **dungeon-forge-forum** channel
+  (named like `Molten Core – 24.10.2026 18:00`). That channel may be a normal text channel or a Discord **forum**.
+  A text channel gets a standalone public thread and the embed is posted inside it. A forum gets one post per event: the post title is that same name, and the sign-up embed is the post's starter message (Discord uses the same id for the post and the starter message).
+  The channel itself only lists threads or posts. In a text channel, Discord also shows a small "thread created" system line; the bot leaves that line alone.
+  The default channel name used to be `dungeon-forge`. If the bot cannot find `dungeon-forge-forum` and that name is still the configured default, it logs a warning that tells you to rename the channel or set `channels.events` in `global.json`.
   Optional `awardpoints` turns raid points on or off (default **on** for raids). Dungeons cannot award points.
 * The embed shows display name, date/time (as Discord timestamp markup, so everybody sees their own time zone),
   duration, required slots per role, current sign-ups per role (user mentions), Bench, Cant attend, a counter like `17/20`,
@@ -86,7 +88,8 @@ https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&scope=bot%20applic
 
 The permission integer `326417869888` contains: View Channels, Send Messages, Embed Links, Add Reactions, Use External Emojis,
 Read Message History, Manage Messages, Create Public Threads, Send Messages in Threads, Manage Threads.
-That set is what the bot needs to create a standalone thread, post and edit the embed inside it, add and remove reactions, and write in the log, manage, and points channels.
+That set covers a text events channel and a forum events channel, plus the log, manage, and points channels.
+Discord's API says creating a post in a forum (a thread-only channel) requires **Send Messages** — that is the Create Posts permission in the channel settings. **Create Public Threads** is what a text events channel uses to open a standalone thread. **Send Messages in Threads** is required to write inside the thread or forum post.
 (Scopes: `bot applications.commands`.)
 
 ### 3. Prepare roles and channels on your server
@@ -98,22 +101,24 @@ Roles (names are configurable in `global.json`):
 | `df-manager` | may use the manager slash commands (`/dfhelp` lists them) |
 | `df-logs` | may see the log channel |
 
-Text channels (names or ids are configurable):
+Channels (names or ids are configurable). The events channel may be a text channel or a forum; the others stay text channels.
 
 | Channel | Purpose | Recommended permissions |
 | --- | --- | --- |
-| `dungeon-forge` | one standalone public thread per event; the embed and the reactions live **inside** the thread. The channel listing is the threads. Discord also posts a short "thread created" system line in this channel. | `@everyone`: **deny View Channel**. `df-dungeoneer`: **allow** View Channel, Read Message History, Add Reactions; **deny** Send Messages, **deny** Send Messages in Threads, **deny** Create Public Threads. Bot: **allow** View Channel, Send Messages, Embed Links, Add Reactions, Read Message History, Manage Messages, Manage Threads, Create Public Threads, Send Messages in Threads. |
+| `dungeon-forge-forum` | one event per thread (text channel) or one event per forum post. The embed and the reactions live on the message inside that thread or on the post's starter message. The default name was `dungeon-forge`. | `@everyone`: **deny View Channel**. `df-dungeoneer`: **allow** View Channel, Read Message History, Add Reactions; **deny** Send Messages, **deny** Send Messages in Threads, **deny** Create Public Threads. Bot: **allow** View Channel, Send Messages, Embed Links, Add Reactions, Read Message History, Manage Messages, Manage Threads, Create Public Threads, Send Messages in Threads. In a forum, Send Messages is Create Posts. |
 | `dungeon-forge-manage` | managers use the slash commands (dungeoneers may use `/dfpoints` and `/dfleaderboard` here) | `@everyone`: deny View Channel. `df-manager`: allow View Channel, Send Messages, Use Application Commands. `df-dungeoneer`: allow View Channel, Use Application Commands (Send Messages only if you want them to chat here). Bot: allow View Channel, Send Messages. |
 | `dungeon-forge-log` | log messages from the bot | `@everyone`: **deny View Channel**. `df-logs`: **allow** View Channel, Read Message History; deny Send Messages. Bot: allow View Channel, Send Messages. |
 | `dungeon-forge-points` | leaderboard and the raid boss-point table, edited in place | `@everyone`: **deny View Channel**. `df-dungeoneer`: **allow** View Channel, Read Message History; **deny** Send Messages. Bot: **allow** View Channel, Send Messages, Manage Messages, Embed Links, Read Message History. |
 
-Notes on "nobody can chat in dungeon-forge":
-* The permission setup above is the reliable way: players can only look at the events and react. Deny **Send Messages**, **Send Messages in Threads**, and **Create Public Threads** for `df-dungeoneer`.
-* Discord shows a small "thread created" system line in the parent channel for each thread. The bot leaves those lines alone.
-* As a safety net the bot deletes top-level user messages in that channel (`deleteStrayMessages`, default **on**, needs *Manage Messages*; if the permission is missing it logs one warning).
-* Inside event threads, non-bot messages are deleted when `deleteStrayThreadMessages` is on (the default). A missing permission fails the same way: one warning, then the bot continues.
-* `"lockEventThreads": true` locks each new thread so only moderators (Manage Threads) can post. The default is `false`; the dungeoneer permission denies above are what stop chat.
-* A permission overwrite on the bot role is needed in the `dungeon-forge` channel if you deny Send Messages for `@everyone`.
+Notes on "nobody can chat in dungeon-forge-forum":
+* The permission setup above is the reliable way: players can only look at the events and react. Deny **Send Messages**, **Send Messages in Threads**, and **Create Public Threads** for `df-dungeoneer`. In a forum, denying Send Messages stops them creating posts, and denying Send Messages in Threads stops replies.
+* Forum posts still allow members to reply when they have Send Messages in Threads. `deleteStrayThreadMessages` (default **on**) deletes non-bot messages inside those posts, the same way it does inside text-channel threads.
+* A text channel shows a small "thread created" system line for each thread. The bot leaves those lines alone. A forum lists the posts themselves.
+* As a safety net the bot deletes top-level user messages in a text events channel (`deleteStrayMessages`, default **on**, needs *Manage Messages*; if the permission is missing it logs one warning). A forum does not accept normal messages in the parent channel.
+* Inside event threads and forum posts, non-bot messages are deleted when `deleteStrayThreadMessages` is on. A missing permission fails the same way: one warning, then the bot continues.
+* `"lockEventThreads": true` locks each new thread or post so only moderators (Manage Threads) can post. The default is `false`; the dungeoneer permission denies above are what stop chat.
+* A permission overwrite on the bot role is needed in the events channel if you deny Send Messages for `@everyone`.
+* If the forum has **Require tag** turned on, the bot applies the first tag in the forum's tag list. With no tags, event creation stops and the log explains that a tag has to be added (or the requirement turned off). A moderated-only tag needs the bot to have Manage Threads.
 
 ### 4. Configure
 Open `src/DungeonForge/Configurations/global.json` and replace the placeholders:
@@ -124,7 +129,7 @@ Open `src/DungeonForge/Configurations/global.json` and replace the placeholders:
   "guildId": 0,                        // your server id (Discord: Settings → Advanced → Developer Mode; right-click server → Copy Server ID)
   "timeZone": "Europe/Vienna",         // time zone used for /dfcreateevent date+time
   "channels": {                        // id 0 = look the channel up by name; a non-zero id takes precedence
-    "events": { "name": "dungeon-forge",        "id": 0 },
+    "events": { "name": "dungeon-forge-forum",  "id": 0 },   // text channel or forum; default name (was dungeon-forge)
     "manage": { "name": "dungeon-forge-manage", "id": 0 },
     "log":    { "name": "dungeon-forge-log",    "id": 0 },
     "points": { "name": "dungeon-forge-points", "id": 0 }  // missing or still a placeholder: warn and skip, do not abort startup
@@ -256,7 +261,7 @@ src/DungeonForge/
   Models/                         EventDefinition + BossDefinition, EventType, EventStatus,
                                   EventInstance + Signup, BossKillRecord, PointsLedgerEntry, RoleDefinition
   Services/                       ConfigurationLoader, EventDefinitionRepository(+Validator), EventStore,
-                                  EventRenderer (embed), SignupLogic, EventMessagePolicy, OpenEventLimit,
+                                  EventRenderer (embed), SignupLogic, EventMessagePolicy, EventsChannelSupport, OpenEventLimit,
                                   PointsLogic, PointsSummaryFormatter, PointsBoardFormatter,
                                   PointsStore (Data/points.json), PointsChannelStore, PointsBoardService,
                                   EventDateParser, EventTemplateListFormatter, EventTemplateAutocomplete,
@@ -269,7 +274,7 @@ tests/DungeonForge.Tests/         xUnit tests for the pure logic (run: dotnet te
 ## Behaviour details / limits
 
 * Gateway intents: `Guilds`, `GuildMembers` (privileged), `GuildMessages`, `GuildMessageReactions`. No `MessageContent`.
-* Each new event is a standalone public thread in the events channel (`CreateThreadAsync` with no parent message, `ThreadType.PublicThread`). The auto-archive duration is one week, then three days, then one day, if the guild rejects the longer value. The embed, the role reactions, and the sign-up updates are a message inside that thread. The parent channel only lists threads, plus Discord's "thread created" system line.
+* Each new event is either a standalone public thread in a text events channel (`CreateThreadAsync` with no parent message, `ThreadType.PublicThread`) or a forum post (`CreatePostAsync`) when `dungeon-forge-forum` is a forum. The auto-archive duration is one week, then three days, then one day, if the guild rejects the longer value. The embed, the role reactions, and the sign-up updates live on the message inside that thread. For a forum post that message is the starter message, and its id is the post id. Deleting the starter message deletes the post; the thread-deleted handler removes the stored event, and a following message-deleted event for the same id does not remove it twice. The parent channel only lists threads or posts. A text channel also shows Discord's "thread created" system line.
 * Events already stored with the embed in the parent channel (`embedInThread` missing or false) stay on that layout: reactions, edits, cancel, and completion still use that channel message.
 * The bot unarchives a thread (and joins it) when it needs to edit the embed or reconcile reactions. Completing an event archives and locks the thread when `archiveCompletedEventThreads` is on.
 * Reactions on messages that are not in the cache are handled (reaction events are processed by message id and are serialized in arrival order). A completed event drops new sign-up reactions.

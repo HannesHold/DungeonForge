@@ -34,6 +34,7 @@ public static class CommandHelpFormatter
         IEnumerable<SlashCommandInfo> commands,
         string managerRole = "df-manager",
         string manageChannel = "dungeon-forge-manage",
+        string eventsChannel = "dungeon-forge-forum",
         int maxLength = DiscordMessageLimit)
     {
         if (maxLength < 1)
@@ -49,7 +50,7 @@ public static class CommandHelpFormatter
         var lines = new List<string>
         {
             "**Dungeon Forge commands**",
-            $"Usable in **{manageChannel}**. Commands marked **manager-only** need the **{managerRole}** role. dfpoints and dfleaderboard can also be used with the dungeoneer role.",
+            $"Usable in **{manageChannel}**. Events go in **{eventsChannel}** (text or forum). **manager-only** needs **{managerRole}**. dfpoints and dfleaderboard also work with the dungeoneer role.",
             "",
         };
         foreach (var command in ordered)

@@ -63,7 +63,11 @@ public sealed class EventService
 
     private SocketGuild? Guild => _client.GetGuild(GuildId);
 
-    private SocketTextChannel? EventsChannel => Guild?.GetTextChannel(_channels.Events);
+    /// <summary>Legacy layout only: the embed lives in a text channel. A forum parent has no top-level messages.</summary>
+    private SocketTextChannel? EventsTextChannel => Guild?.GetTextChannel(_channels.Events);
+
+    private SocketGuildChannel? EventsParent =>
+        _channels.Events == 0 ? null : Guild?.GetChannel(_channels.Events);
 
     /// <summary>Snapshot of stored events ordered by start time. Completed events stay until the retention cutoff.</summary>
     public async Task<IReadOnlyList<EventInstance>> ListEventsAsync()
@@ -119,8 +123,8 @@ public sealed class EventService
             if (OpenEventLimit.Rejection(open, _config.Global.MaxOpenEvents) is { } limitError)
                 return new CreateEventResult(null, limitError);
 
-            var channel = EventsChannel;
-            if (channel is null)
+            var parent = EventsParent;
+            if (parent is null)
                 return new CreateEventResult(null, "The events channel could not be found. Check global.json and the bot's permissions.");
 
             var instance = new EventInstance
@@ -133,7 +137,7 @@ public sealed class EventService
                 StartTime = start,
                 DurationInHours = def.DurationInHours,
                 GuildId = GuildId,
-                ChannelId = channel.Id,
+                ChannelId = parent.Id,
                 CreatedByUserId = createdByUserId,
                 CreatedAt = DateTimeOffset.UtcNow,
                 AwardsPoints = awardsPoints,
@@ -141,32 +145,55 @@ public sealed class EventService
                 EmbedInThread = true,
             };
 
-            // Standalone public thread: no parent message. Discord.Net 3.20 names this CreateThreadAsync;
-            // omitting the message posts to POST /channels/{id}/threads.
-            var thread = await CreateStandaloneThreadAsync(channel, _renderer.ThreadName(instance));
+            IThreadChannel? thread;
+            IUserMessage? posted;
+            if (parent is SocketForumChannel forum)
+            {
+                var created = await CreateForumPostAsync(forum, instance);
+                if (created.Error is not null)
+                    return new CreateEventResult(null, created.Error);
+                thread = created.Thread;
+                // Discord gives a forum post and its starter message the same id.
+                instance.ThreadId = thread!.Id;
+                instance.MessageId = thread.Id;
+                posted = await TryGetStarterMessageAsync(thread);
+            }
+            else if (parent is SocketTextChannel text)
+            {
+                // Standalone public thread: no parent message. Discord.Net 3.20 names this CreateThreadAsync;
+                // omitting the message posts to POST /channels/{id}/threads.
+                thread = await CreateStandaloneThreadAsync(text, _renderer.ThreadName(instance));
+                if (thread is null)
+                    return new CreateEventResult(null, "I could not create a thread in the events channel (needs Create Public Threads). See the log channel/console.");
+
+                await EnsureActiveAsync(thread);
+                try
+                {
+                    posted = await thread.SendMessageAsync(embed: _renderer.BuildEmbed(instance), allowedMentions: AllowedMentions.None);
+                }
+                catch (HttpException ex)
+                {
+                    _log.Error($"Could not post the event embed in the thread for **{instance.DisplayName}** (needs Send Messages in Threads and Embed Links).", ex);
+                    await TryDeleteThreadAsync(thread);
+                    return new CreateEventResult(null, "I could not post the event inside its thread (missing permissions?). See the log channel/console.");
+                }
+
+                instance.ThreadId = thread.Id;
+                instance.MessageId = posted.Id;
+            }
+            else
+            {
+                return new CreateEventResult(null, $"The events channel '{parent.Name}' is not a text channel or a forum. Set channels.events in global.json to one of those.");
+            }
+
             if (thread is null)
-                return new CreateEventResult(null, "I could not create a thread in the events channel (needs Create Public Threads). See the log channel/console.");
+                return new CreateEventResult(null, "I could not create the event thread. See the log channel/console.");
 
-            await EnsureActiveAsync(thread);
-
-            IUserMessage posted;
-            try
-            {
-                posted = await thread.SendMessageAsync(embed: _renderer.BuildEmbed(instance), allowedMentions: AllowedMentions.None);
-            }
-            catch (HttpException ex)
-            {
-                _log.Error($"Could not post the event embed in the thread for **{instance.DisplayName}** (needs Send Messages in Threads and Embed Links).", ex);
-                await TryDeleteThreadAsync(thread);
-                return new CreateEventResult(null, "I could not post the event inside its thread (missing permissions?). See the log channel/console.");
-            }
-
-            instance.ThreadId = thread.Id;
-            instance.MessageId = posted.Id;
             _store.Add(instance);
             await _store.SaveAsync();
 
-            await EnsureBotReactionsAsync(posted, instance);
+            if (posted is not null)
+                await EnsureBotReactionsAsync(posted, instance);
             if (_config.Global.LockEventThreads)
             {
                 try { await thread.ModifyAsync(p => p.Locked = true); }
@@ -179,7 +206,7 @@ public sealed class EventService
             await _store.SaveAsync();
             var pointsNote = instance.AwardsPoints ? " Points are enabled." : " Points are disabled.";
             _log.Info($"Event **{instance.DisplayName}** ({instance.EventName}) created for {_renderer.FormatLocal(instance)} by {EventRenderer.Mention(createdByUserId)}.{pointsNote} " +
-                      DiscordHelpers.MessageLink(GuildId, EventMessagePolicy.LinkChannelId(instance), posted.Id));
+                      DiscordHelpers.MessageLink(GuildId, EventMessagePolicy.LinkChannelId(instance), instance.MessageId));
             return new CreateEventResult(instance, null);
         }
         finally
@@ -210,6 +237,124 @@ public sealed class EventService
 
         _log.Warn($"Could not create the event thread: {last?.Message}");
         return null;
+    }
+
+    /// <summary>
+    /// Forum post whose title is the event thread name and whose starter message is the sign-up embed.
+    /// The starter message id equals the post id. A required tag uses the first tag on the forum.
+    /// </summary>
+    private async Task<(IThreadChannel? Thread, string? Error)> CreateForumPostAsync(SocketForumChannel forum, EventInstance instance)
+    {
+        var tagOptions = (forum.Tags ?? Array.Empty<ForumTag>()).Select(tag => new ForumTagOption(tag.Id, tag.Name)).ToList();
+        var selection = EventsChannelSupport.SelectTag(EventsChannelSupport.RequiresTag(forum.Flags), tagOptions);
+        if (selection.Error is not null)
+        {
+            _log.Warn($"Could not create a post in **{forum.Name}**: {selection.Error}");
+            return (null, selection.Error);
+        }
+
+        var tags = selection.ApplyTag ? MatchingTags(forum, selection.TagId) : null;
+        var appliedName = selection.TagName;
+        var tagWasRequired = selection.ApplyTag;
+
+        HttpException? last = null;
+        foreach (var duration in ArchiveDurations)
+        {
+            try
+            {
+                var post = await forum.CreatePostAsync(
+                    _renderer.ThreadName(instance),
+                    duration,
+                    embed: _renderer.BuildEmbed(instance),
+                    allowedMentions: AllowedMentions.None,
+                    tags: tags);
+                if (tagWasRequired)
+                    _log.Info($"Forum **{forum.Name}** requires a tag. Applied **{appliedName}** to **{instance.DisplayName}**.");
+                return (post, null);
+            }
+            catch (HttpException ex) when (IsTagRequired(ex) && !tagWasRequired)
+            {
+                var retry = EventsChannelSupport.SelectTag(requireTag: true, tagOptions);
+                if (retry.Error is not null)
+                {
+                    _log.Warn($"Could not create a post in **{forum.Name}**: {retry.Error}");
+                    return (null, retry.Error);
+                }
+
+                tags = MatchingTags(forum, retry.TagId);
+                appliedName = retry.TagName;
+                tagWasRequired = true;
+                try
+                {
+                    var post = await forum.CreatePostAsync(
+                        _renderer.ThreadName(instance),
+                        duration,
+                        embed: _renderer.BuildEmbed(instance),
+                        allowedMentions: AllowedMentions.None,
+                        tags: tags);
+                    _log.Info($"Forum **{forum.Name}** requires a tag. Applied **{appliedName}** to **{instance.DisplayName}**.");
+                    return (post, null);
+                }
+                catch (HttpException retryEx) when (IsArchiveRejected(retryEx))
+                {
+                    last = retryEx;
+                }
+                catch (HttpException retryEx)
+                {
+                    return ForumPostFailed(forum, retryEx);
+                }
+            }
+            catch (HttpException ex) when (IsArchiveRejected(ex))
+            {
+                last = ex;
+            }
+            catch (HttpException ex)
+            {
+                return ForumPostFailed(forum, ex);
+            }
+        }
+
+        _log.Warn($"Could not create the forum post in **{forum.Name}**: {last?.Message}");
+        return (null, "I could not create a post in the events forum (needs Send Messages). See the log channel/console.");
+    }
+
+    private (IThreadChannel? Thread, string? Error) ForumPostFailed(SocketForumChannel forum, HttpException ex)
+    {
+        if (ex.DiscordCode == DiscordErrorCode.ThereAreNoTagsAvailableThatCanBeSetByNonModerators)
+        {
+            const string text = "This forum's tags can only be applied with Manage Threads. Give the bot Manage Threads, or add a tag that members can apply.";
+            _log.Warn($"Could not create a post in **{forum.Name}**: {text}");
+            return (null, text);
+        }
+
+        _log.Warn($"Could not create a post in **{forum.Name}** (needs Send Messages): {ex.Message}");
+        return (null, "I could not create a post in the events forum (needs Send Messages). See the log channel/console.");
+    }
+
+    private static ForumTag[] MatchingTags(SocketForumChannel forum, ulong tagId) =>
+        (forum.Tags ?? Array.Empty<ForumTag>()).Where(tag => tag.Id == tagId).Take(1).ToArray();
+
+    private static bool IsTagRequired(HttpException ex) =>
+        ex.DiscordCode == DiscordErrorCode.ATagIsRequiredToCreateAForumPostInThisChannel;
+
+    private static bool IsArchiveRejected(HttpException ex) =>
+        (int)ex.HttpCode == 400 && !IsTagRequired(ex);
+
+    /// <summary>The starter message of a forum post uses the post's id. A miss is logged; reconcile can add reactions later.</summary>
+    private async Task<IUserMessage?> TryGetStarterMessageAsync(IThreadChannel thread)
+    {
+        try
+        {
+            if (await thread.GetMessageAsync(thread.Id) is IUserMessage message)
+                return message;
+            _log.Warn($"Forum post {thread.Id} has no starter message yet. Reactions will be added when the message can be read.");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"Could not load the starter message of forum post {thread.Id}: {ex.Message}");
+            return null;
+        }
     }
 
     private async Task EnsureBotReactionsAsync(IUserMessage message, EventInstance instance)
@@ -699,7 +844,7 @@ public sealed class EventService
     private async Task<IMessageChannel?> OpenEventChannelAsync(EventInstance e)
     {
         if (!e.EmbedInThread)
-            return EventsChannel;
+            return EventsTextChannel;
 
         var thread = await FindThreadAsync(e.ThreadId);
         if (thread is null)

@@ -44,6 +44,20 @@ public class ThreadDeletionTests
     }
 
     [Fact]
+    public async Task DeletingTheStarterMessageAndTheThread_RemovesTheEventOnce()
+    {
+        await using var harness = Harness.Create();
+        var raid = Threaded("Molten Core", threadId: 50, messageId: 50);
+        harness.Store.Add(raid);
+
+        await harness.Events.HandleMessageDeletedAsync(50, 50);
+        await harness.Events.HandleThreadDeletedAsync(50);
+
+        Assert.Empty(harness.Store.Events);
+        Assert.Single(harness.Log.Warnings);
+    }
+
+    [Fact]
     public async Task HandleThreadDeleted_KeepsLedgerEntries_ForACompletedEvent()
     {
         await using var harness = Harness.Create();

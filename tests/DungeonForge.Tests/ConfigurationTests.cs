@@ -28,7 +28,7 @@ public class ConfigurationTests
         Assert.Equal("Europe/Vienna", cfg.TimeZone.Id);
         Assert.Equal(new[] { "Tank", "Heal", "Melee-DPS", "Range-DPS" }, cfg.SubscriptionRoles.Select(r => r.Key));
         Assert.Equal(new[] { "Bench", "Cant-attend" }, cfg.FixedRoles.Select(r => r.Key));
-        Assert.Equal("dungeon-forge", cfg.Global.Channels.Events.Name);
+        Assert.Equal("dungeon-forge-forum", cfg.Global.Channels.Events.Name);
         Assert.Equal("dungeon-forge-manage", cfg.Global.Channels.Manage.Name);
         Assert.Equal("dungeon-forge-log", cfg.Global.Channels.Log.Name);
         Assert.Equal("df-dungeoneer", cfg.Global.Roles.Dungeoneer.Name);
@@ -65,6 +65,7 @@ public class ConfigurationTests
         Assert.True(defaults.ArchiveCompletedEventThreads);
         Assert.True(defaults.DeleteStrayThreadMessages);
         Assert.Equal("dungeon-forge-points", defaults.Channels.Points.Name);
+        Assert.Equal("dungeon-forge-forum", defaults.Channels.Events.Name);
     }
 
     [Fact]

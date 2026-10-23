@@ -17,7 +17,7 @@
   // Channels. If "id" is 0 the channel is looked up by "name" at startup.
   // If "id" is set it takes precedence over the name.
   "channels": {
-    "events": { "name": "dungeon-forge",        "id": 0 },   // each event is its own thread in this channel
+    "events": { "name": "dungeon-forge-forum",  "id": 0 },   // text channel or forum; each event is its own thread or forum post
     "manage": { "name": "dungeon-forge-manage", "id": 0 },   // managers create events here via slash commands
     "log":    { "name": "dungeon-forge-log",    "id": 0 },   // bot log messages
     "points": { "name": "dungeon-forge-points", "id": 0 }    // leaderboard and raid boss-point table; missing channel is skipped

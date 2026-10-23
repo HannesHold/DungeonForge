@@ -235,7 +235,8 @@ public sealed class EventCommands : InteractionModuleBase<SocketInteractionConte
         var messages = CommandHelpFormatter.Format(
             _interactions.SlashCommands,
             _config.Global.Roles.Manager.Name,
-            _config.Global.Channels.Manage.Name);
+            _config.Global.Channels.Manage.Name,
+            _config.Global.Channels.Events.Name);
         foreach (var message in messages)
             await FollowupAsync(message, ephemeral: true);
     }

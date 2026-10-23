@@ -80,6 +80,7 @@ public class CommandHelpFormatterTests
         Assert.Contains("`awardpoints`", create);
         Assert.Contains("df-manager", text);
         Assert.Contains("dungeon-forge-manage", text);
+        Assert.Contains("dungeon-forge-forum", text);
         Assert.All(messages, message => Assert.InRange(message.Length, 1, EventTemplateListFormatter.DiscordMessageLimit));
         Assert.All(messages, message => Assert.False(message.StartsWith('\n') || message.EndsWith('\n') || message.StartsWith(' ')));
 

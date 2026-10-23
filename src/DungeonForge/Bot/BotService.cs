@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 
 namespace DungeonForge.Bot;
 
-/// <summary>Owns the Discord connection: login, gateway event wiring, startup (commands, reconciliation) and shutdown.</summary>
+/// <summary>Owns the Discord connection: login, gateway event wiring, startup (commands, reconciliation) and shutdown. The events channel may be a text channel or a forum.</summary>
 public sealed class BotService : BackgroundService
 {
     private readonly DiscordSocketClient _client;
@@ -149,7 +149,7 @@ public sealed class BotService : BackgroundService
 
             // resolve channels
             var errors = new List<string>();
-            var events = ResolveChannel(guild, global.Channels.Events, "events", errors);
+            var events = ResolveEventsChannel(guild, global.Channels.Events, errors);
             var manage = ResolveChannel(guild, global.Channels.Manage, "manage", errors);
             var log = ResolveChannel(guild, global.Channels.Log, "log", errors);
             if (errors.Count > 0)
@@ -186,6 +186,52 @@ public sealed class BotService : BackgroundService
             _logger.LogCritical(ex, "Startup failed.");
             Fail("Startup failed: " + ex.Message);
         }
+    }
+
+    private ulong ResolveEventsChannel(SocketGuild guild, NamedId configured, List<string> errors)
+    {
+        var candidates = guild.Channels
+            .Select(channel => new EventsChannelCandidate(channel.Id, channel.Name, channel.ChannelType))
+            .ToList();
+        var match = EventsChannelSupport.Resolve(candidates, configured.Id, configured.Name);
+        if (!match.Found)
+        {
+            errors.Add(match.Error ?? "channels.events: the events channel was not found.");
+            if (configured.Id == 0 && EventsChannelSupport.IsDefaultName(configured.Name))
+                _log.Warn(match.Error ?? EventsChannelSupport.MissingNameMessage(EventsChannelSupport.DefaultName));
+            return 0;
+        }
+
+        var missing = Array.Empty<string>();
+        var parent = guild.GetChannel(match.Id);
+        if (guild.CurrentUser is SocketGuildUser me && parent is IGuildChannel guildChannel)
+        {
+            try
+            {
+                var perms = me.GetPermissions(guildChannel);
+                missing = EventsChannelSupport.MissingPermissions(new EventsChannelPermissionSnapshot(
+                    perms.ViewChannel,
+                    perms.SendMessages,
+                    perms.CreatePublicThreads,
+                    perms.SendMessagesInThreads,
+                    perms.ManageThreads,
+                    perms.ManageMessages,
+                    perms.AddReactions,
+                    perms.ReadMessageHistory,
+                    perms.EmbedLinks)).ToArray();
+            }
+            catch (Exception ex)
+            {
+                _log.Warn($"Could not read the bot's permissions on the events channel: {ex.Message}");
+            }
+        }
+
+        var report = EventsChannelSupport.StartupMessage(match.Name, match.Kind, missing);
+        if (missing.Length == 0)
+            _log.Info(report);
+        else
+            _log.Warn(report);
+        return match.Id;
     }
 
     private static ulong ResolveChannel(SocketGuild guild, NamedId configured, string label, List<string> errors)
