@@ -100,6 +100,17 @@ public sealed class EventCommands : InteractionModuleBase<SocketInteractionConte
         await FollowupAsync(text, ephemeral: true);
     }
 
+    [SlashCommand("dflisteventtemplates", "List the available event templates")]
+    public async Task ListEventTemplatesAsync()
+    {
+        await DeferAsync(ephemeral: true);
+        if (!await CheckAccessAsync()) return;
+
+        var (valid, errors) = _definitions.LoadAll();
+        foreach (var message in EventTemplateListFormatter.Format(valid, errors))
+            await FollowupAsync(message, ephemeral: true);
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private readonly record struct EventDefinitionRepositoryResult(Models.EventDefinition? Definition, string? Error);

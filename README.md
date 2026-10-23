@@ -31,6 +31,7 @@ The bot is generic: dungeons, roles, emoji, channel and Discord role names are a
 | `/dfcreateevent event date time` | Creates an event. `event` = file name in `EventConfigurations` (autocomplete), `date` = `dd.MM.yyyy`, `time` = `HH:mm` (24h) in the configured time zone. |
 | `/dfcancelevent event` | Cancels an event (marks the message cancelled, clears reactions, archives + locks the thread). Autocomplete lists active events. |
 | `/dflistevents` | Lists active events with links. |
+| `/dflisteventtemplates` | Lists every template in `EventConfigurations`: name (the value for `/dfcreateevent`), display name, attendiesRequired, durationInHours and the per-role counts (e.g. `2 Tank, 4 Heal`). Invalid files are listed under **Invalid templates** with the error and do not abort the command. |
 
 All commands only work in the **dungeon-forge-manage** channel and only for members with the **df-manager** role.
 Answers are ephemeral (only you see them). Errors are explained: unknown event file, bad date/time, date in the past,
@@ -64,7 +65,7 @@ Roles (names are configurable in `global.json`):
 | Role | Purpose |
 | --- | --- |
 | `df-dungeoneer` | may sign up/off by reacting to events – give it to your raiders |
-| `df-manager` | may create/cancel events |
+| `df-manager` | may create, cancel and list events |
 | `df-logs` | may see the log channel |
 
 Text channels (names or ids are configurable):
@@ -154,6 +155,7 @@ Create `src/DungeonForge/EventConfigurations/<name>.json`. The file name (withou
 * `dateTime` is only a template/default. The real date and time come from `/dfcreateevent`.
 * `durationInHours` may have decimals (`1.5`).
 * Files are validated when used (and checked at startup); the error messages tell you exactly what is wrong. Samples: `MoltenCore20` (20 players), `Dungeon10` (10 players), `Dungeon5` (5 players).
+* `/dflisteventtemplates` (manage channel, `df-manager`) lists those templates. The **name** is what you pass to `/dfcreateevent`. A file that fails validation is shown in an **Invalid templates** section with the reason, instead of failing the command. A long list is split across messages so each one stays within Discord's length limit.
 
 New files are picked up without restarting the bot only if they are in the *running* output directory – otherwise rebuild.
 
@@ -169,6 +171,7 @@ src/DungeonForge/
   Models/                         EventDefinition (template), EventInstance + Signup (persisted), RoleDefinition
   Services/                       ConfigurationLoader, EventDefinitionRepository(+Validator), EventStore,
                                   EventRenderer (embed), SignupLogic (pure rules), EventDateParser,
+                                  EventTemplateListFormatter (template list text),
                                   EventService (Discord orchestration), BotLog, EventWorkQueue
   Bot/                            BotService (client, gateway handlers, startup), EventCommands (slash commands + autocomplete),
                                   DiscordHelpers, EmojiKey, ResolvedChannels
