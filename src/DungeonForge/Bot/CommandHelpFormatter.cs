@@ -15,10 +15,18 @@ public static class CommandHelpFormatter
     [
         "dfcreateevent",
         "dfcancelevent",
+        "dfcompleteevent",
+        "dfbosskill",
+        "dfundobosskill",
+        "dfeditkill",
+        "dfplayerleft",
+        "dfplayerjoined",
         "dflistevents",
         "dflisteventtemplates",
         "dflistraidtemplates",
         "dflistdungeontemplates",
+        "dfpoints",
+        "dfleaderboard",
         "dfhelp",
     ];
 
@@ -41,7 +49,7 @@ public static class CommandHelpFormatter
         var lines = new List<string>
         {
             "**Dungeon Forge commands**",
-            $"Usable in **{manageChannel}**. Commands marked **manager-only** need the **{managerRole}** role.",
+            $"Usable in **{manageChannel}**. Commands marked **manager-only** need the **{managerRole}** role. dfpoints and dfleaderboard can also be used with the dungeoneer role.",
             "",
         };
         foreach (var command in ordered)

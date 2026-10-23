@@ -18,6 +18,9 @@ public sealed class BotService : BackgroundService
     private readonly BotConfiguration _config;
     private readonly ResolvedChannels _channels;
     private readonly IEventStore _store;
+    private readonly IPointsStore _points;
+    private readonly IPointsChannelStore _pointsChannel;
+    private readonly PointsBoardService _pointsBoard;
     private readonly EventService _events;
     private readonly EventWorkQueue _queue;
     private readonly IBotLog _log;
@@ -28,7 +31,8 @@ public sealed class BotService : BackgroundService
     private int _strayDeleteWarned;
 
     public BotService(DiscordSocketClient client, InteractionService interactions, IServiceProvider services,
-        BotConfiguration config, ResolvedChannels channels, IEventStore store, EventService events,
+        BotConfiguration config, ResolvedChannels channels, IEventStore store, IPointsStore points,
+        IPointsChannelStore pointsChannel, PointsBoardService pointsBoard, EventService events,
         EventWorkQueue queue, IBotLog log, IHostApplicationLifetime lifetime, ILogger<BotService> logger)
     {
         _client = client;
@@ -37,6 +41,9 @@ public sealed class BotService : BackgroundService
         _config = config;
         _channels = channels;
         _store = store;
+        _points = points;
+        _pointsChannel = pointsChannel;
+        _pointsBoard = pointsBoard;
         _events = events;
         _queue = queue;
         _log = log;
@@ -49,7 +56,9 @@ public sealed class BotService : BackgroundService
         try
         {
             await _store.LoadAsync();
-            _logger.LogInformation("Loaded {Count} stored event(s).", _store.Events.Count);
+            await _points.LoadAsync();
+            await _pointsChannel.LoadAsync();
+            _logger.LogInformation("Loaded {Count} stored event(s) and {Points} points entry(s).", _store.Events.Count, _points.Entries.Count);
 
             var (valid, errors) = new EventDefinitionRepository(_config).LoadAll();
             _logger.LogInformation("Found {Count} valid event file(s) in EventConfigurations.", valid.Count);
@@ -143,7 +152,8 @@ public sealed class BotService : BackgroundService
                 Fail("Channel configuration is invalid (see above). The bot can only see channels it has View Channel permission for.");
                 return;
             }
-            _channels.SetChannels(events, manage, log);
+            var points = ResolvePointsChannel(guild, global.Channels.Points);
+            _channels.SetChannels(events, manage, log, points);
 
             // warn about missing Discord roles
             foreach (var (label, role) in new[]
@@ -158,6 +168,8 @@ public sealed class BotService : BackgroundService
             await _interactions.RegisterCommandsToGuildAsync(global.GuildId, deleteMissing: true);
 
             await _events.ReconcileAllAsync();
+            await _pointsBoard.RefreshBossTableAsync();
+            await _pointsBoard.RefreshLeaderboardAsync();
 
             _log.Info($"Dungeon Forge is online as **{_client.CurrentUser.Username}** on **{guild.Name}**. " +
                       $"{_store.Events.Count} active event(s). Time zone: {_config.TimeZone.Id}.");
@@ -184,6 +196,35 @@ public sealed class BotService : BackgroundService
         errors.Add($"channels.{label}: no text channel named '{configured.Name}' was found (set its \"id\" in global.json).");
         return 0;
     }
+
+    /// <summary>The points channel is optional at runtime: a missing or placeholder channel is logged and skipped.</summary>
+    private ulong ResolvePointsChannel(SocketGuild guild, NamedId? configured)
+    {
+        if (configured is null || IsPlaceholder(configured))
+        {
+            _log.Warn("The points channel is not configured. Set channels.points in global.json (default name dungeon-forge-points). The points board will not be posted.");
+            return 0;
+        }
+
+        if (configured.Id != 0)
+        {
+            if (guild.GetTextChannel(configured.Id) is { } byId)
+                return byId.Id;
+            _log.Warn($"channels.points: no text channel with id {configured.Id} is visible to the bot. The points board will not be posted.");
+            return 0;
+        }
+
+        var byName = guild.TextChannels.FirstOrDefault(c => c.Name.Equals(configured.Name, StringComparison.OrdinalIgnoreCase));
+        if (byName is not null)
+            return byName.Id;
+
+        _log.Warn($"channels.points: no text channel named '{configured.Name}' was found. Create it or set its id. The points board will not be posted.");
+        return 0;
+    }
+
+    private static bool IsPlaceholder(NamedId configured) =>
+        configured.Id == 0 && (string.IsNullOrWhiteSpace(configured.Name) ||
+                               configured.Name.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase));
 
     private async Task OnInteractionCreated(SocketInteraction interaction)
     {
@@ -219,10 +260,29 @@ public sealed class BotService : BackgroundService
 
     private async Task OnMessageReceived(SocketMessage message)
     {
-        // Keep the events channel free of chat. Needs no MessageContent intent: author and channel are always known.
-        if (!_config.Global.DeleteStrayMessages) return;
-        if (message.Source != MessageSource.User || message.Channel.Id != _channels.Events || _channels.Events == 0) return;
+        // Needs no MessageContent intent: author and channel are always known.
+        if (message.Channel.Id == _channels.Events && _channels.Events != 0)
+        {
+            if (EventMessagePolicy.DeleteParentMessage(
+                    _config.Global.DeleteStrayMessages,
+                    message.Source == MessageSource.User,
+                    message.Type == MessageType.ThreadCreated,
+                    message.Author.IsBot))
+                await TryDeleteStrayAsync(message, "events channel");
+            return;
+        }
 
+        if (message.Channel is SocketThreadChannel &&
+            EventMessagePolicy.DeleteThreadMessage(
+                _config.Global.DeleteStrayThreadMessages,
+                await _events.IsEventThreadAsync(message.Channel.Id),
+                message.Source == MessageSource.User,
+                message.Author.IsBot))
+            await TryDeleteStrayAsync(message, "event thread");
+    }
+
+    private async Task TryDeleteStrayAsync(SocketMessage message, string where)
+    {
         try
         {
             await message.DeleteAsync();
@@ -230,7 +290,7 @@ public sealed class BotService : BackgroundService
         catch (Exception ex)
         {
             if (Interlocked.Exchange(ref _strayDeleteWarned, 1) == 0)
-                _log.Warn($"Could not delete a stray message in the events channel (the bot needs Manage Messages there): {ex.Message}");
+                _log.Warn($"Could not delete a stray message in the {where} (the bot needs Manage Messages): {ex.Message}");
         }
     }
 

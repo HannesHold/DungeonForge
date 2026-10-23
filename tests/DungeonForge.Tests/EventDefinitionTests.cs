@@ -54,6 +54,17 @@ public class EventDefinitionTests
         ("ZulGurub20", "Zul'Gurub", 20, 3, 2, 4, 7, 7),
     };
 
+    private static readonly Dictionary<string, string[]> RaidBosses = new()
+    {
+        ["MoltenCore40"] = ["Lucifron", "Magmadar", "Gehennas", "Garr", "Shazzrah", "Baron Geddon", "Sulfuron Harbinger", "Golemagg the Incinerator", "Majordomo Executus", "Ragnaros"],
+        ["BlackwingLair40"] = ["Razorgore the Untamed", "Vaelastrasz the Corrupt", "Broodlord Lashlayer", "Firemaw", "Ebonroc", "Flamegor", "Chromaggus", "Nefarian"],
+        ["OnyxiasLair40"] = ["Onyxia"],
+        ["ZulGurub20"] = ["High Priestess Jeklik", "High Priest Venoxis", "High Priestess Mar'li", "Bloodlord Mandokir", "Edge of Madness", "Gahz'ranka", "High Priest Thekal", "High Priestess Arlokk", "Jin'do the Hexxer", "Hakkar"],
+        ["RuinsOfAhnQiraj20"] = ["Kurinnaxx", "General Rajaxx", "Moam", "Buru the Gorger", "Ayamiss the Hunter", "Ossirian the Unscarred"],
+        ["AhnQirajTemple40"] = ["The Prophet Skeram", "Bug Trio", "Battleguard Sartura", "Fankriss the Unyielding", "Viscidus", "Princess Huhuran", "The Twin Emperors", "Ouro", "C'Thun"],
+        ["Naxxramas40"] = ["Anub'Rekhan", "Grand Widow Faerlina", "Maexxna", "Noth the Plaguebringer", "Heigan the Unclean", "Loatheb", "Instructor Razuvious", "Gothik the Harvester", "The Four Horsemen", "Patchwerk", "Grobbulus", "Gluth", "Thaddius", "Sapphiron", "Kel'Thuzad"],
+    };
+
     private static EventDefinitionRepository ShippedRepo()
     {
         var root = ConfigurationTests.CopyConfigurationsToTemp(g => g);
@@ -106,6 +117,15 @@ public class EventDefinitionTests
             Assert.Equal(spec.Melee, def.AttendyPerRole["Melee-DPS"]);
             Assert.Equal(spec.Range, def.AttendyPerRole["Range-DPS"]);
             Assert.All(def.AttendyPerRole.Values, count => Assert.True(count > 0));
+            if (expectedType == EventType.Raid)
+            {
+                Assert.Equal(RaidBosses[spec.Name], def.Bosses!.Select(boss => boss.Name));
+                Assert.All(def.Bosses!, boss => Assert.Null(boss.Points));
+            }
+            else
+            {
+                Assert.True(def.Bosses is null || def.Bosses.Count == 0);
+            }
         }
     }
 
@@ -124,6 +144,8 @@ public class EventDefinitionTests
         Assert.Equal(14, def.AttendyPerRole["Range-DPS"]);
         Assert.Equal(4, def.DurationInHours);
         Assert.NotNull(def.DateTime);
+        Assert.Equal(RaidBosses["MoltenCore40"], def.Bosses!.Select(boss => boss.Name));
+        Assert.All(def.Bosses!, boss => Assert.Null(boss.Points));
     }
 
     [Fact]
@@ -345,10 +367,74 @@ public class EventDefinitionTests
     private static EventDefinitionRepository RepoAt(string root) =>
         new(new BotConfiguration(new GlobalConfig(), TestSupport.Roles, TestSupport.FixedRoles, TimeZoneInfo.Utc, root));
 
+    [Fact]
+    public void Bosses_AreRequiredForRaids_ForbiddenForDungeons_AndPointsMustBePositiveIntegers()
+    {
+        var raid = new EventDefinition
+        {
+            Name = "X", Type = EventType.Raid, DisplayName = "X", AttendiesRequired = 2, DurationInHours = 1,
+            AttendyPerRole = new() { ["Tank"] = 1, ["Heal"] = 1 },
+        };
+        Assert.Contains(EventDefinitionValidator.Validate(raid, "X", TestSupport.Roles), e => e.Contains("\"bosses\"") && e.Contains("Raid"));
+
+        raid.Bosses = [new BossDefinition { Name = "One" }, new BossDefinition { Name = "one" }, new BossDefinition { Name = "Two", Points = 0 }];
+        var dup = EventDefinitionValidator.Validate(raid, "X", TestSupport.Roles);
+        Assert.Contains(dup, e => e.Contains("more than once"));
+        Assert.Contains(dup, e => e.Contains("greater than 0"));
+
+        raid.Bosses = [new BossDefinition { Name = "One", Points = 15 }];
+        Assert.Empty(EventDefinitionValidator.Validate(raid, "X", TestSupport.Roles));
+
+        var dungeon = new EventDefinition
+        {
+            Name = "D", Type = EventType.Dungeon, DisplayName = "D", AttendiesRequired = 2, DurationInHours = 1,
+            AttendyPerRole = new() { ["Tank"] = 1, ["Heal"] = 1 },
+            Bosses = [new BossDefinition { Name = "Not allowed" }],
+        };
+        Assert.Contains(EventDefinitionValidator.Validate(dungeon, "D", TestSupport.Roles), e => e.Contains("Dungeon"));
+
+        dungeon.Bosses = [];
+        Assert.Empty(EventDefinitionValidator.Validate(dungeon, "D", TestSupport.Roles));
+
+        var fraction = WriteJson("Frac.json", """
+            {
+              "name": "Frac",
+              "type": "Raid",
+              "displayName": "Frac",
+              "attendiesRequired": 2,
+              "attendyPerRole": { "Tank": 1, "Heal": 1 },
+              "durationInHours": 2,
+              "bosses": [ { "name": "A", "points": 10.5 } ]
+            }
+            """);
+        var fractionError = Assert.Throws<ConfigurationException>(() =>
+            EventDefinitionRepository.LoadFile(fraction, "Frac", TestSupport.Roles, "Raids"));
+        Assert.Contains("integer", fractionError.Message);
+        Assert.DoesNotContain("invalid JSON", fractionError.Message);
+
+        var overridePoints = WriteJson("Over.json", """
+            {
+              "name": "Over",
+              "type": "Raid",
+              "displayName": "Over",
+              "attendiesRequired": 2,
+              "attendyPerRole": { "Tank": 1, "Heal": 1 },
+              "durationInHours": 2,
+              "bosses": [ { "name": "A" }, { "name": "B", "points": 15 } ]
+            }
+            """);
+        var loaded = EventDefinitionRepository.LoadFile(overridePoints, "Over", TestSupport.Roles, "Raids");
+        Assert.Null(loaded.Bosses![0].Points);
+        Assert.Equal(15, loaded.Bosses[1].Points);
+    }
+
     private static string TemplateJson(string name, string? type, string? displayName = null)
     {
         displayName ??= name + " display";
         var typeJson = type is null ? "null" : $"\"{type}\"";
+        var bosses = type is not null && EventTypeJsonConverter.TryParse(type, out var parsed) && parsed == EventType.Raid
+            ? ",\n  \"bosses\": [ { \"name\": \"Boss One\" } ]"
+            : "";
         return $$"""
             {
               "name": "{{name}}",
@@ -356,7 +442,7 @@ public class EventDefinitionTests
               "displayName": "{{displayName}}",
               "attendiesRequired": 2,
               "attendyPerRole": { "Tank": 1, "Heal": 1 },
-              "durationInHours": 2
+              "durationInHours": 2{{bosses}}
             }
             """;
     }

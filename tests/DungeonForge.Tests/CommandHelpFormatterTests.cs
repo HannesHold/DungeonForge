@@ -13,11 +13,25 @@ public class CommandHelpFormatterTests
     {
         "dfcreateevent",
         "dfcancelevent",
+        "dfcompleteevent",
+        "dfbosskill",
+        "dfundobosskill",
+        "dfeditkill",
+        "dfplayerleft",
+        "dfplayerjoined",
         "dflistevents",
         "dflisteventtemplates",
         "dflistraidtemplates",
         "dflistdungeontemplates",
+        "dfpoints",
+        "dfleaderboard",
         "dfhelp",
+    };
+
+    private static readonly HashSet<string> DungeoneerCommands = new(StringComparer.Ordinal)
+    {
+        "dfpoints",
+        "dfleaderboard",
     };
 
     [Fact]
@@ -45,8 +59,16 @@ public class CommandHelpFormatterTests
         {
             var bullet = Assert.Single(bullets, line => line.Contains($"**/{command.Name}**", StringComparison.Ordinal));
             Assert.Contains(command.Description, bullet);
-            Assert.Contains("manager-only", bullet);
-            Assert.True(CommandHelpFormatter.IsManagerOnly(command));
+            if (DungeoneerCommands.Contains(command.Name))
+            {
+                Assert.DoesNotContain("manager-only", bullet);
+                Assert.False(CommandHelpFormatter.IsManagerOnly(command));
+            }
+            else
+            {
+                Assert.Contains("manager-only", bullet);
+                Assert.True(CommandHelpFormatter.IsManagerOnly(command));
+            }
             foreach (var parameter in command.Parameters)
                 Assert.Contains($"`{parameter.Name}`", bullet);
         }
@@ -55,6 +77,7 @@ public class CommandHelpFormatterTests
         Assert.Contains("`event`", create);
         Assert.Contains("`date`", create);
         Assert.Contains("`time`", create);
+        Assert.Contains("`awardpoints`", create);
         Assert.Contains("df-manager", text);
         Assert.Contains("dungeon-forge-manage", text);
         Assert.All(messages, message => Assert.InRange(message.Length, 1, EventTemplateListFormatter.DiscordMessageLimit));
@@ -108,7 +131,10 @@ public class CommandHelpFormatterTests
             services.AddSingleton<EventDefinitionRepository>();
             services.AddSingleton<EventRenderer>();
             services.AddSingleton<IEventStore>(_ => new EventStore(Path.Combine(root, "events.json")));
+            services.AddSingleton<IPointsStore>(_ => new PointsStore(Path.Combine(root, "points.json")));
+            services.AddSingleton<IPointsChannelStore>(_ => new PointsChannelStore(Path.Combine(root, "points-channel.json")));
             services.AddSingleton<IBotLog, SilentLog>();
+            services.AddSingleton<PointsBoardService>();
             services.AddSingleton<EventService>();
             var provider = services.BuildServiceProvider();
             await interactions.AddModulesAsync(typeof(EventCommands).Assembly, provider);

@@ -10,5 +10,17 @@
     "Range-DPS": 14
   },
   "dateTime": "2026-10-24T18:00:00",
-  "durationInHours": 4
+  "durationInHours": 4,
+  "bosses": [
+    { "name": "Lucifron" },
+    { "name": "Magmadar" },
+    { "name": "Gehennas" },
+    { "name": "Garr" },
+    { "name": "Shazzrah" },
+    { "name": "Baron Geddon" },
+    { "name": "Sulfuron Harbinger" },
+    { "name": "Golemagg the Incinerator" },
+    { "name": "Majordomo Executus" },
+    { "name": "Ragnaros" }
+  ]
 }

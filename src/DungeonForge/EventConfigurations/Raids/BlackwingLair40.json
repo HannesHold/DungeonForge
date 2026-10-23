@@ -10,5 +10,15 @@
     "Range-DPS": 14
   },
   "dateTime": "2026-10-24T18:00:00",
-  "durationInHours": 4
+  "durationInHours": 4,
+  "bosses": [
+    { "name": "Razorgore the Untamed" },
+    { "name": "Vaelastrasz the Corrupt" },
+    { "name": "Broodlord Lashlayer" },
+    { "name": "Firemaw" },
+    { "name": "Ebonroc" },
+    { "name": "Flamegor" },
+    { "name": "Chromaggus" },
+    { "name": "Nefarian" }
+  ]
 }

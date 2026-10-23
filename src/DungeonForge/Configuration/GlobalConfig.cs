@@ -11,10 +11,26 @@ public sealed class GlobalConfig
     public ChannelsConfig Channels { get; set; } = new();
     public DiscordRolesConfig Roles { get; set; } = new();
     public bool DeleteStrayMessages { get; set; } = true;
+
+    /// <summary>Delete non-bot messages posted inside event threads. Missing means on.</summary>
+    public bool DeleteStrayThreadMessages { get; set; } = true;
+
     public bool LockEventThreads { get; set; }
     public bool LogToDiscord { get; set; } = true;
     public string DataDirectory { get; set; } = "Data";
     public int FinishedEventRetentionHours { get; set; } = 24;
+
+    /// <summary>Points granted for a boss kill when the template does not override that boss. Must be &gt; 0.</summary>
+    public int PointsPerBossKill { get; set; } = 10;
+
+    /// <summary>Percentage of boss points a benched player receives when the raid was full at that kill. 0–100.</summary>
+    public int BenchPointsPercent { get; set; } = 25;
+
+    /// <summary>Archive and lock the event thread when an event is completed. Missing means on.</summary>
+    public bool ArchiveCompletedEventThreads { get; set; } = true;
+
+    /// <summary>Maximum number of events with status Open at once. Completed events do not count.</summary>
+    public int MaxOpenEvents { get; set; } = 10;
 }
 
 public sealed class ChannelsConfig
@@ -22,6 +38,9 @@ public sealed class ChannelsConfig
     public NamedId Events { get; set; } = new() { Name = "dungeon-forge" };
     public NamedId Manage { get; set; } = new() { Name = "dungeon-forge-manage" };
     public NamedId Log { get; set; } = new() { Name = "dungeon-forge-log" };
+
+    /// <summary>Leaderboard and raid boss-point table. Id 0 looks the channel up by name. A missing channel does not stop the bot.</summary>
+    public NamedId Points { get; set; } = new() { Name = "dungeon-forge-points" };
 }
 
 public sealed class DiscordRolesConfig

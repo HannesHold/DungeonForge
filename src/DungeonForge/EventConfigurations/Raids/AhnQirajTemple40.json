@@ -10,5 +10,16 @@
     "Range-DPS": 14
   },
   "dateTime": "2026-10-24T18:00:00",
-  "durationInHours": 5
+  "durationInHours": 5,
+  "bosses": [
+    { "name": "The Prophet Skeram" },
+    { "name": "Bug Trio" },
+    { "name": "Battleguard Sartura" },
+    { "name": "Fankriss the Unyielding" },
+    { "name": "Viscidus" },
+    { "name": "Princess Huhuran" },
+    { "name": "The Twin Emperors" },
+    { "name": "Ouro" },
+    { "name": "C'Thun" }
+  ]
 }

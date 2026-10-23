@@ -17,9 +17,10 @@
   // Channels. If "id" is 0 the channel is looked up by "name" at startup.
   // If "id" is set it takes precedence over the name.
   "channels": {
-    "events": { "name": "dungeon-forge",        "id": 0 },   // events are posted here, each with its own thread
+    "events": { "name": "dungeon-forge",        "id": 0 },   // each event is its own thread in this channel
     "manage": { "name": "dungeon-forge-manage", "id": 0 },   // managers create events here via slash commands
-    "log":    { "name": "dungeon-forge-log",    "id": 0 }    // bot log messages
+    "log":    { "name": "dungeon-forge-log",    "id": 0 },   // bot log messages
+    "points": { "name": "dungeon-forge-points", "id": 0 }    // leaderboard and raid boss-point table; missing channel is skipped
   },
 
   // Discord roles. If "id" is 0 the role is matched by "name" (case-insensitive).
@@ -29,16 +30,33 @@
     "logs":       { "name": "df-logs",       "id": 0 }       // may see the log channel (permissions are set in Discord)
   },
 
-  // Keep the events channel free of chat: delete messages that users post there (needs "Manage Messages").
+  // Keep the events channel free of chat: delete top-level user messages there (needs "Manage Messages").
+  // Discord's own "thread created" system line is left alone.
   "deleteStrayMessages": true,
+
+  // Delete non-bot messages posted inside event threads (needs "Manage Messages"). Fails with one warning if the permission is missing.
+  "deleteStrayThreadMessages": true,
 
   // Lock the event threads so that nobody except moderators can write in them (needs "Manage Threads").
   "lockEventThreads": false,
 
+  // Points for one boss kill when that boss has no "points" override in its raid template.
+  "pointsPerBossKill": 10,
+
+  // Benched players receive this percentage of each killed boss's points, only when the raid was full at that kill.
+  // Rounded to the nearest integer per boss (0.5 rounds away from zero). 0 to 100.
+  "benchPointsPercent": 25,
+
+  // Archive and lock the event thread when /dfcompleteevent finishes it. A failure is logged and the event still completes.
+  "archiveCompletedEventThreads": true,
+
+  // How many events may be open at once (completed and cancelled events do not count). At least 1.
+  "maxOpenEvents": 10,
+
   // Mirror log messages to the log channel (they are always written to the console).
   "logToDiscord": true,
 
-  // Directory for persisted state (events.json). Relative paths are relative to the executable.
+  // Directory for persisted state (events.json, points.json, points-channel.json). Relative paths are relative to the executable.
   "dataDirectory": "Data",
 
   // Finished events are forgotten this many hours after they ended.

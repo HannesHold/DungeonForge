@@ -10,5 +10,17 @@
     "Range-DPS": 7
   },
   "dateTime": "2026-10-24T18:00:00",
-  "durationInHours": 3
+  "durationInHours": 3,
+  "bosses": [
+    { "name": "High Priestess Jeklik" },
+    { "name": "High Priest Venoxis" },
+    { "name": "High Priestess Mar'li" },
+    { "name": "Bloodlord Mandokir" },
+    { "name": "Edge of Madness" },
+    { "name": "Gahz'ranka" },
+    { "name": "High Priest Thekal" },
+    { "name": "High Priestess Arlokk" },
+    { "name": "Jin'do the Hexxer" },
+    { "name": "Hakkar" }
+  ]
 }

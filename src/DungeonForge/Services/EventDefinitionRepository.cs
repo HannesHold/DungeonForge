@@ -96,6 +96,7 @@ public sealed class EventDefinitionRepository
             throw new ConfigurationException($"{file}: invalid JSON (expected an object).");
 
         var typeError = ReadType(obj, out var type);
+        var bossParseErrors = ReadBosses(obj, out var bosses);
 
         EventDefinition? def;
         try
@@ -111,8 +112,9 @@ public sealed class EventDefinitionRepository
             throw new ConfigurationException($"{file}: file is empty.");
 
         def.Type = type;
+        def.Bosses = bosses;
 
-        var errors = EventDefinitionValidator.Validate(def, expectedName, subscriptionRoles, parentFolder, typeError)
+        var errors = EventDefinitionValidator.Validate(def, expectedName, subscriptionRoles, parentFolder, typeError, bossParseErrors)
             .Select(e => $"{file}: {e}")
             .ToList();
         if (errors.Count > 0)
@@ -155,6 +157,93 @@ public sealed class EventDefinitionRepository
         }
 
         return $"\"type\" is '{node.ToJsonString()}' but must be \"Raid\" or \"Dungeon\".";
+    }
+
+    /// <summary>
+    /// Removes <c>bosses</c> so a non-integer <c>points</c> value becomes a validation error instead of a JSON failure.
+    /// A missing property leaves <paramref name="bosses"/> null (absent).
+    /// </summary>
+    private static List<string> ReadBosses(JsonObject obj, out List<BossDefinition>? bosses)
+    {
+        bosses = null;
+        var keys = new List<string>();
+        foreach (var property in obj)
+        {
+            if (property.Key.Equals("bosses", StringComparison.OrdinalIgnoreCase))
+                keys.Add(property.Key);
+        }
+
+        if (keys.Count == 0)
+            return new List<string>();
+
+        var node = obj[keys[0]];
+        foreach (var key in keys)
+            obj.Remove(key);
+
+        if (keys.Count > 1)
+            return new List<string> { "\"bosses\" is specified more than once." };
+
+        if (node is null)
+            return new List<string>();
+
+        if (node is not JsonArray array)
+            return new List<string> { "\"bosses\" must be an array of objects with a \"name\" and an optional integer \"points\"." };
+
+        var list = new List<BossDefinition>();
+        var errors = new List<string>();
+        var index = 0;
+        foreach (var item in array)
+        {
+            index++;
+            if (item is not JsonObject bossObj)
+            {
+                errors.Add($"\"bosses\" entry #{index} must be an object with a \"name\".");
+                continue;
+            }
+
+            var nameNode = Take(bossObj, "name");
+            var pointsNode = Take(bossObj, "points");
+            if (nameNode is not JsonValue nameValue || !nameValue.TryGetValue<string>(out var name) || string.IsNullOrWhiteSpace(name))
+            {
+                errors.Add($"\"bosses\" entry #{index} has no \"name\".");
+                continue;
+            }
+
+            name = name.Trim();
+            int? points = null;
+            if (pointsNode is not null)
+            {
+                if (pointsNode is JsonValue pointsValue && pointsValue.TryGetValue<int>(out var parsed))
+                    points = parsed;
+                else
+                    errors.Add($"boss '{name}' has \"points\" that must be an integer greater than 0.");
+            }
+
+            list.Add(new BossDefinition { Name = name, Points = points });
+        }
+
+        bosses = list;
+        return errors;
+    }
+
+    private static JsonNode? Take(JsonObject obj, string name)
+    {
+        string? found = null;
+        foreach (var property in obj)
+        {
+            if (property.Key.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                found = property.Key;
+                break;
+            }
+        }
+
+        if (found is null)
+            return null;
+
+        var node = obj[found];
+        obj.Remove(found);
+        return node;
     }
 
     private List<TemplateFile> EnumerateFiles()
@@ -200,7 +289,8 @@ public static class EventDefinitionValidator
         string expectedName,
         IReadOnlyList<RoleDefinition> subscriptionRoles,
         string? parentFolder = null,
-        string? typeError = null)
+        string? typeError = null,
+        IReadOnlyList<string>? bossParseErrors = null)
     {
         var errors = new List<string>();
 
@@ -224,6 +314,8 @@ public static class EventDefinitionValidator
 
         if (!(def.DurationInHours > 0) || double.IsInfinity(def.DurationInHours))
             errors.Add($"\"durationInHours\" must be a positive number (is {def.DurationInHours}).");
+
+        ValidateBosses(def, errors, bossParseErrors);
 
         if (def.AttendyPerRole is null || def.AttendyPerRole.Count == 0)
         {
@@ -250,6 +342,40 @@ public static class EventDefinitionValidator
             errors.Add($"the role counts in \"attendyPerRole\" add up to {sum}, but \"attendiesRequired\" is {def.AttendiesRequired}.");
 
         return errors;
+    }
+
+    private static void ValidateBosses(EventDefinition def, List<string> errors, IReadOnlyList<string>? bossParseErrors)
+    {
+        if (bossParseErrors is not null)
+            errors.AddRange(bossParseErrors);
+
+        var bosses = def.Bosses;
+        var absentOrEmpty = bosses is null || bosses.Count == 0;
+        var parsedCleanly = bossParseErrors is null || bossParseErrors.Count == 0;
+
+        if (def.Type == EventType.Dungeon && !absentOrEmpty)
+            errors.Add("\"bosses\" must be absent or empty for a Dungeon.");
+        else if (def.Type == EventType.Raid && absentOrEmpty && parsedCleanly)
+            errors.Add("\"bosses\" is required for a Raid and must list at least one boss.");
+
+        if (bosses is null)
+            return;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var boss in bosses)
+        {
+            if (string.IsNullOrWhiteSpace(boss.Name))
+            {
+                errors.Add("a boss in \"bosses\" has no \"name\".");
+                continue;
+            }
+
+            var name = boss.Name.Trim();
+            if (!seen.Add(name))
+                errors.Add($"boss '{name}' appears more than once in \"bosses\".");
+            if (boss.Points is int points && points <= 0)
+                errors.Add($"boss '{name}' has \"points\" {points} but it must be an integer greater than 0.");
+        }
     }
 
     /// <summary>Raid when the file lives in a Raids folder, Dungeon for Dungeons, otherwise no folder rule.</summary>

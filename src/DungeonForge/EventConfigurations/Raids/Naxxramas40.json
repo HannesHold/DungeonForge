@@ -10,5 +10,22 @@
     "Range-DPS": 14
   },
   "dateTime": "2026-10-24T18:00:00",
-  "durationInHours": 6
+  "durationInHours": 6,
+  "bosses": [
+    { "name": "Anub'Rekhan" },
+    { "name": "Grand Widow Faerlina" },
+    { "name": "Maexxna" },
+    { "name": "Noth the Plaguebringer" },
+    { "name": "Heigan the Unclean" },
+    { "name": "Loatheb" },
+    { "name": "Instructor Razuvious" },
+    { "name": "Gothik the Harvester" },
+    { "name": "The Four Horsemen" },
+    { "name": "Patchwerk" },
+    { "name": "Grobbulus" },
+    { "name": "Gluth" },
+    { "name": "Thaddius" },
+    { "name": "Sapphiron" },
+    { "name": "Kel'Thuzad" }
+  ]
 }

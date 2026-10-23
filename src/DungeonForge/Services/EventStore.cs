@@ -9,6 +9,7 @@ public interface IEventStore
 {
     IReadOnlyList<EventInstance> Events { get; }
     EventInstance? FindByMessageId(ulong messageId);
+    EventInstance? FindByThreadId(ulong threadId);
     void Add(EventInstance e);
     bool Remove(EventInstance e);
     Task LoadAsync();
@@ -45,6 +46,9 @@ public sealed class EventStore : IEventStore
 
     public EventInstance? FindByMessageId(ulong messageId) => _events.FirstOrDefault(e => e.MessageId == messageId);
 
+    public EventInstance? FindByThreadId(ulong threadId) =>
+        threadId == 0 ? null : _events.FirstOrDefault(e => e.ThreadId == threadId);
+
     public void Add(EventInstance e) => _events.Add(e);
 
     public bool Remove(EventInstance e) => _events.Remove(e);
@@ -58,7 +62,16 @@ public sealed class EventStore : IEventStore
         {
             await using var stream = File.OpenRead(_path);
             var state = await JsonSerializer.DeserializeAsync<StateFile>(stream, JsonDefaults.State);
-            if (state is not null) _events.AddRange(state.Events);
+            if (state?.Events is null)
+                return;
+
+            foreach (var e in state.Events)
+            {
+                if (e is null)
+                    continue;
+                Normalize(e);
+                _events.Add(e);
+            }
         }
         catch (JsonException ex)
         {
@@ -83,6 +96,24 @@ public sealed class EventStore : IEventStore
         finally
         {
             _fileLock.Release();
+        }
+    }
+
+    /// <summary>Old events.json files omit the points and thread-layout fields. Fill those in so the rest of the bot can assume non-null lists.</summary>
+    private static void Normalize(EventInstance e)
+    {
+        e.Signups ??= new List<Signup>();
+        e.AttendyPerRole ??= new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        e.Kills ??= new List<BossKillRecord>();
+        e.ExcludedUserIds ??= new List<ulong>();
+        e.Kills.RemoveAll(kill => kill is null);
+        foreach (var kill in e.Kills)
+        {
+            kill.Boss ??= "";
+            kill.Attendees ??= new List<KillAttendee>();
+            kill.Bench ??= new List<KillAttendee>();
+            kill.Attendees.RemoveAll(attendee => attendee is null);
+            kill.Bench.RemoveAll(attendee => attendee is null);
         }
     }
 }

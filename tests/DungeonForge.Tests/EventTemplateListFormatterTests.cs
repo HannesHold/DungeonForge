@@ -207,7 +207,8 @@ public class EventTemplateListFormatterTests
               "displayName": "Ok Raid",
               "attendiesRequired": 2,
               "attendyPerRole": { "Tank": 1, "Heal": 1 },
-              "durationInHours": 2
+              "durationInHours": 2,
+              "bosses": [ { "name": "Boss One" } ]
             }
             """);
         File.WriteAllText(Path.Combine(dir, "Bad.json"), "{ nope");

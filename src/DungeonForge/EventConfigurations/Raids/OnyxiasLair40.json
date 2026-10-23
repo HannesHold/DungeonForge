@@ -10,5 +10,8 @@
     "Range-DPS": 14
   },
   "dateTime": "2026-10-24T18:00:00",
-  "durationInHours": 2
+  "durationInHours": 2,
+  "bosses": [
+    { "name": "Onyxia" }
+  ]
 }

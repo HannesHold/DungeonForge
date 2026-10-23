@@ -57,8 +57,11 @@ services.AddSingleton(sp => new InteractionService(sp.GetRequiredService<Discord
 
 services.AddSingleton<ResolvedChannels>();
 services.AddSingleton<IEventStore, EventStore>();
+services.AddSingleton<IPointsStore, PointsStore>();
+services.AddSingleton<IPointsChannelStore, PointsChannelStore>();
 services.AddSingleton<EventDefinitionRepository>();
 services.AddSingleton<EventRenderer>();
+services.AddSingleton<PointsBoardService>();
 services.AddSingleton<EventService>();
 
 services.AddSingleton<BotLog>();

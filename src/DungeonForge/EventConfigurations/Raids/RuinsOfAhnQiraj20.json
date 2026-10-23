@@ -10,5 +10,13 @@
     "Range-DPS": 7
   },
   "dateTime": "2026-10-24T18:00:00",
-  "durationInHours": 3
+  "durationInHours": 3,
+  "bosses": [
+    { "name": "Kurinnaxx" },
+    { "name": "General Rajaxx" },
+    { "name": "Moam" },
+    { "name": "Buru the Gorger" },
+    { "name": "Ayamiss the Hunter" },
+    { "name": "Ossirian the Unscarred" }
+  ]
 }

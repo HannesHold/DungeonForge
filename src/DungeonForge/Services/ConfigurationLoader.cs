@@ -85,6 +85,12 @@ public static class ConfigurationLoader
             errors.Add("global.json: \"finishedEventRetentionHours\" must not be negative.");
         if (string.IsNullOrWhiteSpace(g.DataDirectory))
             errors.Add("global.json: \"dataDirectory\" must not be empty.");
+        if (g.PointsPerBossKill <= 0)
+            errors.Add("global.json: \"pointsPerBossKill\" must be an integer greater than 0.");
+        if (g.BenchPointsPercent is < 0 or > 100)
+            errors.Add("global.json: \"benchPointsPercent\" must be an integer from 0 to 100.");
+        if (g.MaxOpenEvents < 1)
+            errors.Add("global.json: \"maxOpenEvents\" must be an integer of at least 1.");
     }
 
     private static void CheckNamedId(NamedId? value, string path, List<string> errors)

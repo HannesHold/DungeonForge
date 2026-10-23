@@ -41,24 +41,33 @@ public sealed class EventRenderer
     {
         var attending = SignupLogic.CountAttending(e);
         var full = attending >= e.AttendiesRequired;
+        var completed = !cancelled && e.Status == EventStatus.Completed;
+        var kills = e.Kills ?? new List<BossKillRecord>();
 
         var duration = e.DurationInHours.ToString("0.##", CultureInfo.InvariantCulture);
         var description = string.Join('\n', new[]
         {
             cancelled ? "❌ **This event was cancelled.**" : null,
+            completed ? "✅ **Completed**" : null,
             $"🗓️ {DiscordTimestamp(e.StartTime, 'F')} ({DiscordTimestamp(e.StartTime, 'R')})",
             $"🕒 {FormatLocal(e)} ({_config.TimeZone.Id})",
             $"⏱️ Duration: {duration} h",
-            $"👥 Signed up: **{attending}/{e.AttendiesRequired}**{(full && !cancelled ? " ✅ full" : "")}",
+            $"👥 Signed up: **{attending}/{e.AttendiesRequired}**{(full && !cancelled && !completed ? " ✅ full" : "")}",
+            e.AwardsPoints ? "Points: enabled" : "Points: disabled",
+            e.AwardsPoints
+                ? "Bosses killed: " + (kills.Count == 0 ? "none yet" : string.Join(", ", kills.Select(kill => kill.Boss)))
+                : null,
         }.Where(l => l is not null));
 
         var builder = new EmbedBuilder()
             .WithTitle(e.DisplayName)
             .WithDescription(description)
-            .WithColor(cancelled ? Color.DarkGrey : full ? Color.Green : Color.Orange)
+            .WithColor(cancelled ? Color.DarkGrey : completed ? Color.Blue : full ? Color.Green : Color.Orange)
             .WithFooter(cancelled
                 ? $"{e.EventName} • cancelled"
-                : $"{e.EventName} • React with a role emoji to sign up. Remove your reaction to sign off.");
+                : completed
+                    ? $"{e.EventName} • completed"
+                    : $"{e.EventName} • React with a role emoji to sign up. Remove your reaction to sign off.");
 
         foreach (var role in RolesForEvent(e))
         {
@@ -79,7 +88,17 @@ public sealed class EventRenderer
             builder.AddField(header, FormatMentions(signups), inline: true);
         }
 
+        var excluded = e.ExcludedUserIds;
+        if (e.AwardsPoints && excluded is { Count: > 0 })
+            builder.AddField("Excluded from future kills", FormatUserIds(excluded), inline: false);
+
         return builder.Build();
+    }
+
+    private static string FormatUserIds(IReadOnlyList<ulong> userIds)
+    {
+        var signups = userIds.Select(id => new Signup { UserId = id }).ToList();
+        return FormatMentions(signups);
     }
 
     private static string FormatMentions(IReadOnlyList<Signup> signups)

@@ -20,4 +20,10 @@ public sealed class EventDefinition
 
     public DateTime? DateTime { get; set; }
     public double DurationInHours { get; set; }
+
+    /// <summary>
+    /// Encounter order. Required and non-empty for raids. Absent or empty for dungeons.
+    /// A boss may omit <see cref="BossDefinition.Points"/> to use the global default.
+    /// </summary>
+    public List<BossDefinition>? Bosses { get; set; }
 }

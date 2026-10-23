@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DungeonForge.Bot;
 using DungeonForge.Configuration;
 using DungeonForge.Models;
@@ -34,6 +35,36 @@ public class ConfigurationTests
         Assert.Equal("df-manager", cfg.Global.Roles.Manager.Name);
         Assert.Equal("df-logs", cfg.Global.Roles.Logs.Name);
         Assert.True(cfg.Global.DeleteStrayMessages);
+        Assert.True(cfg.Global.DeleteStrayThreadMessages);
+        Assert.True(cfg.Global.ArchiveCompletedEventThreads);
+        Assert.Equal(10, cfg.Global.PointsPerBossKill);
+        Assert.Equal(25, cfg.Global.BenchPointsPercent);
+        Assert.Equal(10, cfg.Global.MaxOpenEvents);
+        Assert.Equal("dungeon-forge-points", cfg.Global.Channels.Points.Name);
+        Assert.Equal(0UL, cfg.Global.Channels.Points.Id);
+    }
+
+    [Fact]
+    public void PointsSettings_RejectOutOfRangeValues_AndMissingKeysKeepDefaults()
+    {
+        var dir = CopyConfigurationsToTemp(g => g
+            .Replace("\"guildId\": 0", "\"guildId\": 1")
+            .Replace("\"pointsPerBossKill\": 10", "\"pointsPerBossKill\": 0")
+            .Replace("\"benchPointsPercent\": 25", "\"benchPointsPercent\": 101")
+            .Replace("\"maxOpenEvents\": 10", "\"maxOpenEvents\": 0"));
+        var ex = Assert.Throws<ConfigurationException>(() => ConfigurationLoader.Load(dir, _ => "tok"));
+        Assert.Contains(ex.Errors, e => e.Contains("pointsPerBossKill"));
+        Assert.Contains(ex.Errors, e => e.Contains("benchPointsPercent"));
+        Assert.Contains(ex.Errors, e => e.Contains("maxOpenEvents"));
+
+        var defaults = JsonSerializer.Deserialize<GlobalConfig>("""{ "token": "t", "guildId": 1 }""", JsonDefaults.ConfigFiles);
+        Assert.NotNull(defaults);
+        Assert.Equal(10, defaults.PointsPerBossKill);
+        Assert.Equal(25, defaults.BenchPointsPercent);
+        Assert.Equal(10, defaults.MaxOpenEvents);
+        Assert.True(defaults.ArchiveCompletedEventThreads);
+        Assert.True(defaults.DeleteStrayThreadMessages);
+        Assert.Equal("dungeon-forge-points", defaults.Channels.Points.Name);
     }
 
     [Fact]
