@@ -6,6 +6,21 @@ namespace DungeonForge.Tests;
 
 public class EventDefinitionTests
 {
+    /// <summary>Every file shipped in EventConfigurations, in autocomplete (ordinal, case-insensitive) order.</summary>
+    private static readonly (string Name, string DisplayName, int Players, double Hours, int Tank, int Heal, int Melee, int Range)[] ShippedTemplates =
+    {
+        ("AhnQirajTemple40", "Ahn'Qiraj Temple", 40, 5, 4, 9, 13, 14),
+        ("BlackwingLair40", "Blackwing Lair", 40, 4, 4, 9, 13, 14),
+        ("Dungeon10", "Upper Dungeon (10)", 10, 3, 2, 2, 3, 3),
+        ("Dungeon5", "Dungeon (5)", 5, 1.5, 1, 1, 1, 2),
+        ("MoltenCore20", "Molten Core (20)", 20, 4, 2, 4, 7, 7),
+        ("MoltenCore40", "Molten Core", 40, 4, 4, 9, 13, 14),
+        ("Naxxramas40", "Naxxramas", 40, 6, 4, 9, 13, 14),
+        ("OnyxiasLair40", "Onyxia's Lair", 40, 2, 4, 9, 13, 14),
+        ("RuinsOfAhnQiraj20", "Ruins of Ahn'Qiraj", 20, 3, 2, 4, 7, 7),
+        ("ZulGurub20", "Zul'Gurub", 20, 3, 2, 4, 7, 7),
+    };
+
     private static EventDefinitionRepository ShippedRepo()
     {
         var root = ConfigurationTests.CopyConfigurationsToTemp(g => g);
@@ -17,9 +32,32 @@ public class EventDefinitionTests
     [Fact]
     public void ShippedSamples_AreValid()
     {
-        var (valid, errors) = ShippedRepo().LoadAll();
+        var repo = ShippedRepo();
+        var (valid, errors) = repo.LoadAll();
         Assert.Empty(errors);
-        Assert.Equal(new[] { 5, 10, 20 }, valid.Select(v => v.AttendiesRequired).Order());
+
+        var onDisk = Directory.GetFiles(Path.Combine(TestSupport.ProjectDir, "EventConfigurations"), "*.json")
+            .Select(Path.GetFileNameWithoutExtension)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(ShippedTemplates.Select(t => t.Name), onDisk);
+        Assert.Equal(ShippedTemplates.Select(t => t.Name), valid.Select(v => v.Name));
+        Assert.Equal(new[] { 5, 10, 20, 20, 20, 40, 40, 40, 40, 40 }, valid.Select(v => v.AttendiesRequired).Order());
+
+        foreach (var spec in ShippedTemplates)
+        {
+            var def = valid.Single(v => v.Name == spec.Name);
+            Assert.Equal(spec.DisplayName, def.DisplayName);
+            Assert.Equal(spec.Players, def.AttendiesRequired);
+            Assert.Equal(spec.Hours, def.DurationInHours);
+            Assert.NotNull(def.DateTime);
+            Assert.Equal(4, def.AttendyPerRole.Count);
+            Assert.Equal(spec.Players, def.AttendyPerRole.Values.Sum());
+            Assert.Equal(spec.Tank, def.AttendyPerRole["Tank"]);
+            Assert.Equal(spec.Heal, def.AttendyPerRole["Heal"]);
+            Assert.Equal(spec.Melee, def.AttendyPerRole["Melee-DPS"]);
+            Assert.Equal(spec.Range, def.AttendyPerRole["Range-DPS"]);
+            Assert.All(def.AttendyPerRole.Values, count => Assert.True(count > 0));
+        }
     }
 
     [Fact]
@@ -45,7 +83,7 @@ public class EventDefinitionTests
     [Fact]
     public void ListNames_ReturnsFileNamesForAutocomplete()
     {
-        Assert.Equal(new[] { "Dungeon10", "Dungeon5", "MoltenCore20" }, ShippedRepo().ListNames());
+        Assert.Equal(ShippedTemplates.Select(t => t.Name), ShippedRepo().ListNames());
     }
 
     [Fact]

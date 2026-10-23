@@ -157,6 +157,23 @@ Create `src/DungeonForge/EventConfigurations/<name>.json`. The file name (withou
 * Files are validated when used (and checked at startup); the error messages tell you exactly what is wrong. Samples: `MoltenCore20` (20 players), `Dungeon10` (10 players), `Dungeon5` (5 players).
 * `/dflisteventtemplates` (manage channel, `df-manager`) lists those templates. The **name** is what you pass to `/dfcreateevent`. A file that fails validation is shown in an **Invalid templates** section with the reason, instead of failing the command. A long list is split across messages so each one stays within Discord's length limit.
 
+Shipped templates (the role splits and durations are editable defaults):
+
+| Name | Display name | Players | Duration (hours) |
+| --- | --- | --- | --- |
+| `AhnQirajTemple40` | Ahn'Qiraj Temple | 40 | 5 |
+| `BlackwingLair40` | Blackwing Lair | 40 | 4 |
+| `Dungeon10` | Upper Dungeon (10) | 10 | 3 |
+| `Dungeon5` | Dungeon (5) | 5 | 1.5 |
+| `MoltenCore20` | Molten Core (20) | 20 | 4 |
+| `MoltenCore40` | Molten Core | 40 | 4 |
+| `Naxxramas40` | Naxxramas | 40 | 6 |
+| `OnyxiasLair40` | Onyxia's Lair | 40 | 2 |
+| `RuinsOfAhnQiraj20` | Ruins of Ahn'Qiraj | 20 | 3 |
+| `ZulGurub20` | Zul'Gurub | 20 | 3 |
+
+Barrow Deeps and Hyjal Summit are announced for WoW Forever but are not added yet, because their group sizes are not published.
+
 New files are picked up without restarting the bot only if they are in the *running* output directory – otherwise rebuild.
 
 ## Project layout

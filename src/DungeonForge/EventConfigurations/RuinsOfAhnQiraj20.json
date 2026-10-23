@@ -1,0 +1,13 @@
+{
+  "name": "RuinsOfAhnQiraj20",
+  "displayName": "Ruins of Ahn'Qiraj",
+  "attendiesRequired": 20,
+  "attendyPerRole": {
+    "Tank": 2,
+    "Heal": 4,
+    "Melee-DPS": 7,
+    "Range-DPS": 7
+  },
+  "dateTime": "2026-10-24T18:00:00",
+  "durationInHours": 3
+}
