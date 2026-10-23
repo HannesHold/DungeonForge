@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/dungeon-forge-logo.svg" alt="Dungeon Forge logo" width="200"></p>
+
 # Dungeon Forge
 
 A Discord bot (C#, **.NET 10**, console application, [Discord.Net](https://discordnet.dev) 3.20) that organizes raids and dungeons.
@@ -187,3 +189,7 @@ tests/DungeonForge.Tests/         xUnit tests for the pure logic (run: dotnet te
 dotnet build
 dotnet test
 ```
+
+## Branding
+
+The Discord app icon file is assets/dungeon-forge-discord-icon-1024.png.
