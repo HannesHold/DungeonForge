@@ -11,9 +11,9 @@ public class EventTemplateListFormatterTests
     {
         var templates = new[]
         {
-            Template("MoltenCore20", "Molten Core (20)", 20, 4,
-                ("Tank", 2), ("Heal", 4), ("Melee-DPS", 7), ("Range-DPS", 7)),
-            Template("Dungeon5", "Dungeon (5)", 5, 1.5,
+            Template("MoltenCore40", "Molten Core", 40, 4,
+                ("Tank", 4), ("Heal", 9), ("Melee-DPS", 13), ("Range-DPS", 14)),
+            Template("WailingCaverns5", "Wailing Caverns", 5, 1.5,
                 ("Tank", 1), ("Heal", 1), ("Melee-DPS", 1), ("Range-DPS", 2)),
         };
 
@@ -21,13 +21,13 @@ public class EventTemplateListFormatterTests
 
         Assert.Contains("**Event templates** (2)", text);
         Assert.Contains("/dfcreateevent", text);
-        Assert.Contains("**MoltenCore20**", text);
-        Assert.Contains("Molten Core (20)", text);
-        Assert.Contains("attendiesRequired: 20", text);
+        Assert.Contains("**MoltenCore40**", text);
+        Assert.Contains("Molten Core", text);
+        Assert.Contains("attendiesRequired: 40", text);
         Assert.Contains("durationInHours: 4", text);
-        Assert.Contains("2 Tank, 4 Heal, 7 Melee-DPS, 7 Range-DPS", text);
-        Assert.Contains("**Dungeon5**", text);
-        Assert.Contains("Dungeon (5)", text);
+        Assert.Contains("4 Tank, 9 Heal, 13 Melee-DPS, 14 Range-DPS", text);
+        Assert.Contains("**WailingCaverns5**", text);
+        Assert.Contains("Wailing Caverns", text);
         Assert.Contains("attendiesRequired: 5", text);
         Assert.Contains("durationInHours: 1.5", text);
         Assert.Contains("1 Tank, 1 Heal, 1 Melee-DPS, 2 Range-DPS", text);
@@ -39,7 +39,7 @@ public class EventTemplateListFormatterTests
     {
         var valid = new[]
         {
-            Template("Dungeon5", "Dungeon (5)", 5, 1.5,
+            Template("WailingCaverns5", "Wailing Caverns", 5, 1.5,
                 ("Tank", 1), ("Heal", 1), ("Melee-DPS", 1), ("Range-DPS", 2)),
         };
         var errors = new[]
@@ -51,7 +51,7 @@ public class EventTemplateListFormatterTests
 
         var text = string.Join('\n', EventTemplateListFormatter.Format(valid, errors));
         var invalidAt = text.IndexOf("**Invalid templates**", StringComparison.Ordinal);
-        Assert.True(invalidAt > text.IndexOf("**Dungeon5**", StringComparison.Ordinal));
+        Assert.True(invalidAt > text.IndexOf("**WailingCaverns5**", StringComparison.Ordinal));
 
         var invalid = text[invalidAt..];
         Assert.Contains("**Broken.json**", invalid);
@@ -60,7 +60,7 @@ public class EventTemplateListFormatterTests
         Assert.Contains("; ", invalid); // several problems of one file share a line
         Assert.Contains("**Nope.json**", invalid);
         Assert.Contains("invalid JSON", invalid);
-        Assert.DoesNotContain("Dungeon5", invalid);
+        Assert.DoesNotContain("WailingCaverns5", invalid);
     }
 
     [Fact]
@@ -119,6 +119,67 @@ public class EventTemplateListFormatterTests
         Assert.Contains("**Huge.json**", all);
         Assert.Contains("… (truncated)", all);
         Assert.DoesNotContain(new string('e', 500), all);
+    }
+
+    [Fact]
+    public void Format_ThirtyTemplates_ProduceChunksWithinDiscordLimit()
+    {
+        var templates = new List<EventDefinition>();
+        for (var i = 0; i < 30; i++)
+        {
+            var hours = i % 2 == 0 ? 1.5 : 1;
+            templates.Add(Template(
+                $"Fixture{i:00}",
+                $"Fixture number {i:00}",
+                i == 0 ? 10 : 5,
+                hours,
+                i == 0
+                    ? new[] { ("Tank", 2), ("Heal", 2), ("Melee-DPS", 3), ("Range-DPS", 3) }
+                    : new[] { ("Tank", 1), ("Heal", 1), ("Melee-DPS", 1), ("Range-DPS", 2) }));
+        }
+
+        var messages = EventTemplateListFormatter.Format(templates, Array.Empty<string>());
+
+        Assert.True(messages.Count > 1);
+        Assert.All(messages, m => Assert.InRange(m.Length, 1, EventTemplateListFormatter.DiscordMessageLimit));
+        Assert.All(messages, m => Assert.False(m.StartsWith('\n') || m.StartsWith(' ') || m.EndsWith('\n')));
+
+        var all = string.Join('\n', messages);
+        Assert.Contains("**Event templates** (30)", all);
+        Assert.Equal(30, all.Split('\n').Count(line => line.StartsWith("• **", StringComparison.Ordinal)));
+        for (var i = 0; i < 30; i++)
+            Assert.Contains($"**Fixture{i:00}**", all);
+        Assert.Contains("durationInHours: 1.5", all);
+        Assert.Contains("attendiesRequired: 10", all);
+        Assert.Contains("2 Tank, 2 Heal, 3 Melee-DPS, 3 Range-DPS", all);
+        Assert.DoesNotContain("… (truncated)", all);
+
+        var root = ConfigurationTests.CopyConfigurationsToTemp(g => g);
+        var cfg = new BotConfiguration(new GlobalConfig(), TestSupport.Roles, TestSupport.FixedRoles,
+            TimeZoneInfo.Utc, root);
+        var (shipped, errors) = new EventDefinitionRepository(cfg).LoadAll();
+        Assert.Empty(errors);
+        Assert.Equal(30, shipped.Count);
+
+        var shippedMessages = EventTemplateListFormatter.Format(shipped, errors);
+        Assert.True(shippedMessages.Count > 1);
+        Assert.All(shippedMessages, m => Assert.InRange(m.Length, 1, EventTemplateListFormatter.DiscordMessageLimit));
+        var shippedText = string.Join('\n', shippedMessages);
+        Assert.Contains("**Event templates** (30)", shippedText);
+        Assert.Contains(
+            "**WailingCaverns5** – Wailing Caverns – attendiesRequired: 5, durationInHours: 1.5 – 1 Tank, 1 Heal, 1 Melee-DPS, 2 Range-DPS",
+            shippedText);
+        Assert.Contains(
+            "**RagefireChasm5** – Ragefire Chasm – attendiesRequired: 5, durationInHours: 1 – 1 Tank, 1 Heal, 1 Melee-DPS, 2 Range-DPS",
+            shippedText);
+        Assert.Contains(
+            "**BlackrockSpire10** – Blackrock Spire – attendiesRequired: 10, durationInHours: 3 – 2 Tank, 2 Heal, 3 Melee-DPS, 3 Range-DPS",
+            shippedText);
+        Assert.Contains(
+            "**MoltenCore40** – Molten Core – attendiesRequired: 40, durationInHours: 4 – 4 Tank, 9 Heal, 13 Melee-DPS, 14 Range-DPS",
+            shippedText);
+        Assert.Equal(30, shippedText.Split('\n').Count(line => line.StartsWith("• **", StringComparison.Ordinal)));
+        Assert.DoesNotContain("… (truncated)", shippedText);
     }
 
     [Fact]

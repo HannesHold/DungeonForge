@@ -11,8 +11,8 @@ The bot is generic: dungeons, roles, emoji, channel and Discord role names are a
 
 ## What it does
 
-* `/dfcreateevent <event> <date> <time>` (e.g. `/dfcreateevent MoltenCore20 24.10.2026 18:00`) posts an embed in the
-  **dungeon-forge** channel and opens a thread for it (named like `Molten Core (20) – 24.10.2026 18:00`).
+* `/dfcreateevent <event> <date> <time>` (e.g. `/dfcreateevent MoltenCore40 24.10.2026 18:00`) posts an embed in the
+  **dungeon-forge** channel and opens a thread for it (named like `Molten Core – 24.10.2026 18:00`).
 * The embed shows display name, date/time (as Discord timestamp markup, so everybody sees their own time zone),
   duration, required slots per role, current sign-ups per role (user mentions), Bench, Cant attend and a counter like `17/20`.
 * The bot adds one reaction per role (🛡️ 💚 ⚔️ 🏹) plus 🪑 *Bench* and ❌ *Cant attend*. Players sign up by clicking
@@ -142,10 +142,10 @@ Create `src/DungeonForge/EventConfigurations/<name>.json`. The file name (withou
 
 ```json
 {
-  "name": "MoltenCore20",
-  "displayName": "Molten Core (20)",
-  "attendiesRequired": 20,
-  "attendyPerRole": { "Tank": 2, "Heal": 4, "Melee-DPS": 7, "Range-DPS": 7 },
+  "name": "MoltenCore40",
+  "displayName": "Molten Core",
+  "attendiesRequired": 40,
+  "attendyPerRole": { "Tank": 4, "Heal": 9, "Melee-DPS": 13, "Range-DPS": 14 },
   "dateTime": "2026-10-24T18:00:00",
   "durationInHours": 4
 }
@@ -154,7 +154,7 @@ Create `src/DungeonForge/EventConfigurations/<name>.json`. The file name (withou
 * `attendyPerRole` keys must exist in `subscription-roles.json`; counts must be positive and **add up to `attendiesRequired`**. Only roles listed here get a reaction on the event.
 * `dateTime` is only a template/default. The real date and time come from `/dfcreateevent`.
 * `durationInHours` may have decimals (`1.5`).
-* Files are validated when used (and checked at startup); the error messages tell you exactly what is wrong. Samples: `MoltenCore20` (20 players), `Dungeon10` (10 players), `Dungeon5` (5 players).
+* Files are validated when used (and checked at startup); the error messages tell you exactly what is wrong. `MoltenCore40` is one of the shipped raids; the full list is in the table below.
 * `/dflisteventtemplates` (manage channel, `df-manager`) lists those templates. The **name** is what you pass to `/dfcreateevent`. A file that fails validation is shown in an **Invalid templates** section with the reason, instead of failing the command. A long list is split across messages so each one stays within Discord's length limit.
 
 Shipped templates (the role splits and durations are editable defaults):
@@ -162,17 +162,37 @@ Shipped templates (the role splits and durations are editable defaults):
 | Name | Display name | Players | Duration (hours) |
 | --- | --- | --- | --- |
 | `AhnQirajTemple40` | Ahn'Qiraj Temple | 40 | 5 |
+| `BlackfathomDeeps5` | Blackfathom Deeps | 5 | 1.5 |
+| `BlackrockDepths5` | Blackrock Depths | 5 | 3 |
+| `BlackrockSpire10` | Blackrock Spire | 10 | 3 |
 | `BlackwingLair40` | Blackwing Lair | 40 | 4 |
-| `Dungeon10` | Upper Dungeon (10) | 10 | 3 |
-| `Dungeon5` | Dungeon (5) | 5 | 1.5 |
-| `MoltenCore20` | Molten Core (20) | 20 | 4 |
+| `CityOfDalaran5` | City of Dalaran | 5 | 1.5 |
+| `Deadmines5` | Deadmines | 5 | 1 |
+| `DireMaul5` | Dire Maul | 5 | 2 |
+| `ExcavationSiteWetlands5` | Excavation Site: Wetlands | 5 | 1 |
+| `Gnomeregan5` | Gnomeregan | 5 | 1.5 |
+| `HallOfThanes5` | The Hall of Thanes | 5 | 1 |
+| `Maraudon5` | Maraudon | 5 | 2 |
 | `MoltenCore40` | Molten Core | 40 | 4 |
 | `Naxxramas40` | Naxxramas | 40 | 6 |
 | `OnyxiasLair40` | Onyxia's Lair | 40 | 2 |
+| `RagefireChasm5` | Ragefire Chasm | 5 | 1 |
+| `RazorfenDowns5` | Razorfen Downs | 5 | 1.5 |
+| `RazorfenKraul5` | Razorfen Kraul | 5 | 1.5 |
 | `RuinsOfAhnQiraj20` | Ruins of Ahn'Qiraj | 20 | 3 |
+| `RuinsOfLordaeron5` | Ruins of Lordaeron | 5 | 1 |
+| `ScarletMonastery5` | Scarlet Monastery | 5 | 2 |
+| `Scholomance5` | Scholomance | 5 | 2 |
+| `ShadowfangKeep5` | Shadowfang Keep | 5 | 1.5 |
+| `StormwindStockade5` | Stormwind Stockade | 5 | 1 |
+| `Stratholme5` | Stratholme | 5 | 2 |
+| `SunkenTemple5` | Sunken Temple | 5 | 2 |
+| `Uldaman5` | Uldaman | 5 | 1.5 |
+| `WailingCaverns5` | Wailing Caverns | 5 | 1.5 |
+| `ZulFarrak5` | Zul'Farrak | 5 | 1.5 |
 | `ZulGurub20` | Zul'Gurub | 20 | 3 |
 
-Barrow Deeps and Hyjal Summit are announced for WoW Forever but are not added yet, because their group sizes are not published.
+Dungeons announced for WoW Forever but not yet in the game (Alcaz Prison, Blackmaw Hold, Drowned City, Krol'dok Stronghold, Shaper's Terrace) and the raids Barrow Deeps and Hyjal Summit are not added yet, because they have no published data.
 
 New files are picked up without restarting the bot only if they are in the *running* output directory – otherwise rebuild.
 

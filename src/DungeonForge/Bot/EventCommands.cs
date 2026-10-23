@@ -29,7 +29,7 @@ public sealed class EventCommands : InteractionModuleBase<SocketInteractionConte
         _log = log;
     }
 
-    [SlashCommand("dfcreateevent", "Create a dungeon/raid event, e.g. /dfcreateevent MoltenCore20 24.10.2026 18:00")]
+    [SlashCommand("dfcreateevent", "Create a dungeon/raid event, e.g. /dfcreateevent MoltenCore40 24.10.2026 18:00")]
     public async Task CreateEventAsync(
         [Summary("event", "Name of the event file in EventConfigurations"), Autocomplete(typeof(EventFileAutocomplete))] string eventName,
         [Summary("date", "Date as dd.MM.yyyy, e.g. 24.10.2026")] string date,

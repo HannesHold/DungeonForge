@@ -1,6 +1,6 @@
 {
-  "name": "Dungeon5",
-  "displayName": "Dungeon (5)",
+  "name": "Deadmines5",
+  "displayName": "Deadmines",
   "attendiesRequired": 5,
   "attendyPerRole": {
     "Tank": 1,
@@ -8,6 +8,6 @@
     "Melee-DPS": 1,
     "Range-DPS": 2
   },
-  "dateTime": "2026-10-26T20:00:00",
-  "durationInHours": 1.5
+  "dateTime": "2026-10-24T18:00:00",
+  "durationInHours": 1
 }

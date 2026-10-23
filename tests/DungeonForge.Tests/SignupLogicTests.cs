@@ -10,7 +10,7 @@ public class SignupLogicTests
     [Fact]
     public void Apply_AddsAndMovesUser_OneRolePerUser()
     {
-        var e = TestSupport.Event20();
+        var e = TestSupport.Event40();
 
         var first = SignupLogic.Apply(e, 1, "Tank", T0);
         Assert.True(first.Changed);
@@ -31,7 +31,7 @@ public class SignupLogicTests
     [Fact]
     public void Remove_OnlyWorksForCurrentRole()
     {
-        var e = TestSupport.Event20();
+        var e = TestSupport.Event40();
         SignupLogic.Apply(e, 1, "Tank", T0);
         SignupLogic.Apply(e, 1, "Heal", T0); // moved; the old Tank reaction is removed afterwards by the bot
 
@@ -45,17 +45,17 @@ public class SignupLogicTests
     [Fact]
     public void FixedRoles_DoNotCountTowardsAttendance()
     {
-        var e = TestSupport.Event20();
-        for (ulong u = 1; u <= 17; u++) SignupLogic.Apply(e, u, u % 2 == 0 ? "Melee-DPS" : "Range-DPS", T0);
+        var e = TestSupport.Event40();
+        for (ulong u = 1; u <= 37; u++) SignupLogic.Apply(e, u, u % 2 == 0 ? "Melee-DPS" : "Range-DPS", T0);
         SignupLogic.Apply(e, 100, "Bench", T0);
         SignupLogic.Apply(e, 101, "Cant-attend", T0);
 
-        Assert.Equal(17, SignupLogic.CountAttending(e));
+        Assert.Equal(37, SignupLogic.CountAttending(e));
         Assert.False(SignupLogic.IsFull(e));
         Assert.Equal(1, SignupLogic.Count(e, "Bench"));
 
         for (ulong u = 200; u < 203; u++) SignupLogic.Apply(e, u, "Heal", T0);
-        Assert.Equal(20, SignupLogic.CountAttending(e));
+        Assert.Equal(40, SignupLogic.CountAttending(e));
         Assert.True(SignupLogic.IsFull(e));
     }
 
@@ -67,7 +67,7 @@ public class SignupLogicTests
     [Fact]
     public void Reconcile_AppliesOfflineChanges()
     {
-        var e = TestSupport.Event20();
+        var e = TestSupport.Event40();
         SignupLogic.Apply(e, 1, "Tank", T0);        // still reacted -> kept (timestamp kept)
         SignupLogic.Apply(e, 2, "Heal", T0);        // removed reaction while offline -> dropped
         SignupLogic.Apply(e, 3, "Melee-DPS", T0);   // reacted with another role while offline -> moved? (no: still has stored role too)
@@ -91,7 +91,7 @@ public class SignupLogicTests
     [Fact]
     public void Reconcile_RemovesReactionsOfIneligibleUsers_AndPicksFirstRoleForMultiReactors()
     {
-        var e = TestSupport.Event20();
+        var e = TestSupport.Event40();
         var reactions = Reactions(
             ("Tank", new ulong[] { 7, 8 }),
             ("Heal", new ulong[] { 8 }));

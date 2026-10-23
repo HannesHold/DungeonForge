@@ -35,13 +35,14 @@ internal static class TestSupport
     public static BotConfiguration Config(string timeZone = "Europe/Vienna") =>
         new(new GlobalConfig(), Roles, FixedRoles, TimeZoneInfo.FindSystemTimeZoneById(timeZone), Path.GetTempPath());
 
-    public static EventInstance Event20() => new()
+    /// <summary>A Molten Core (40) instance, matching the shipped MoltenCore40 template.</summary>
+    public static EventInstance Event40() => new()
     {
-        EventName = "MoltenCore20",
-        DisplayName = "Molten Core (20)",
-        AttendiesRequired = 20,
+        EventName = "MoltenCore40",
+        DisplayName = "Molten Core",
+        AttendiesRequired = 40,
         AttendyPerRole = new(StringComparer.OrdinalIgnoreCase)
-            { ["Tank"] = 2, ["Heal"] = 4, ["Melee-DPS"] = 7, ["Range-DPS"] = 7 },
+            { ["Tank"] = 4, ["Heal"] = 9, ["Melee-DPS"] = 13, ["Range-DPS"] = 14 },
         StartTime = new DateTimeOffset(2026, 10, 24, 18, 0, 0, TimeSpan.FromHours(2)),
         DurationInHours = 4,
         MessageId = 111,
