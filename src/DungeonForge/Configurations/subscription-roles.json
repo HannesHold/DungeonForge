@@ -1,0 +1,6 @@
+[
+  { "key": "Tank",      "displayName": "Tank",      "emoji": "🛡️" },
+  { "key": "Heal",      "displayName": "Heal",      "emoji": "💚" },
+  { "key": "Melee-DPS", "displayName": "Melee-DPS", "emoji": "⚔️" },
+  { "key": "Range-DPS", "displayName": "Range-DPS", "emoji": "🏹" }
+]

@@ -1,0 +1,46 @@
+{
+  // ============================================================================
+  //  Dungeon Forge - global configuration
+  //  Every value marked YOUR_... / 0 below is a PLACEHOLDER you must replace.
+  //  Tip: instead of writing the token here, set the environment variable
+  //  DUNGEONFORGE_TOKEN (it overrides "token" from this file).
+  // ============================================================================
+
+  "token": "YOUR_BOT_TOKEN",
+
+  // Id of your Discord server (guild). Enable "Developer Mode" in Discord, right-click the server -> Copy Server ID.
+  "guildId": 0,
+
+  // IANA time zone used to interpret the date/time of /dfcreateevent (e.g. "Europe/Vienna").
+  "timeZone": "Europe/Vienna",
+
+  // Channels. If "id" is 0 the channel is looked up by "name" at startup.
+  // If "id" is set it takes precedence over the name.
+  "channels": {
+    "events": { "name": "dungeon-forge",        "id": 0 },   // events are posted here, each with its own thread
+    "manage": { "name": "dungeon-forge-manage", "id": 0 },   // managers create events here via slash commands
+    "log":    { "name": "dungeon-forge-log",    "id": 0 }    // bot log messages
+  },
+
+  // Discord roles. If "id" is 0 the role is matched by "name" (case-insensitive).
+  "roles": {
+    "dungeoneer": { "name": "df-dungeoneer", "id": 0 },      // may sign up / sign off by reacting
+    "manager":    { "name": "df-manager",    "id": 0 },      // may create / cancel events
+    "logs":       { "name": "df-logs",       "id": 0 }       // may see the log channel (permissions are set in Discord)
+  },
+
+  // Keep the events channel free of chat: delete messages that users post there (needs "Manage Messages").
+  "deleteStrayMessages": true,
+
+  // Lock the event threads so that nobody except moderators can write in them (needs "Manage Threads").
+  "lockEventThreads": false,
+
+  // Mirror log messages to the log channel (they are always written to the console).
+  "logToDiscord": true,
+
+  // Directory for persisted state (events.json). Relative paths are relative to the executable.
+  "dataDirectory": "Data",
+
+  // Finished events are forgotten this many hours after they ended.
+  "finishedEventRetentionHours": 24
+}
