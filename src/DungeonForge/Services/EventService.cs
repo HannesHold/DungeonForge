@@ -1,5 +1,6 @@
 using Discord;
 using Discord.Net;
+using Discord.Rest;
 using Discord.WebSocket;
 using DungeonForge.Bot;
 using DungeonForge.Configuration;
@@ -36,6 +37,7 @@ public sealed class EventService
     private readonly IBotLog _log;
     private readonly PointsBoardService _board;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private int _auditActorWarned;
 
     public EventService(
         DiscordSocketClient client,
@@ -419,6 +421,7 @@ public sealed class EventService
             _store.Remove(e);
             await _store.SaveAsync();
             var kept = keptPoints ? " Points already paid are kept." : "";
+            // The command invoker is already named. Do not look at the audit log or append a second "by".
             _log.Info($"Event **{e.DisplayName}** ({_renderer.FormatLocal(e)}) was cancelled by {EventRenderer.Mention(cancelledByUserId)}.{kept}");
             return null;
         }
@@ -581,6 +584,8 @@ public sealed class EventService
     /// <summary>Called when somebody deletes an event message (in the events channel or inside its thread).</summary>
     public async Task HandleMessageDeletedAsync(ulong channelId, ulong messageId)
     {
+        string? line = null;
+        ulong? threadId = null;
         await _gate.WaitAsync();
         try
         {
@@ -590,14 +595,19 @@ public sealed class EventService
             if (channelId != _channels.Events && channelId != e.ChannelId && channelId != e.ThreadId)
                 return;
 
+            // A forum post's starter message uses the thread id. Discord records that delete as a thread delete.
+            threadId = e.ThreadId != 0 && e.MessageId == e.ThreadId ? e.ThreadId : null;
+            line = DeletionAudit.RemovalLine("message", e.DisplayName, _renderer.FormatLocal(e));
             _store.Remove(e);
             await _store.SaveAsync();
-            _log.Warn($"The message of event **{e.DisplayName}** ({_renderer.FormatLocal(e)}) was deleted, so the event was removed.");
         }
         finally
         {
             _gate.Release();
         }
+
+        if (line is not null)
+            ReportRemoval(line, threadId, channelId, _client.CurrentUser?.Id);
     }
 
     /// <summary>
@@ -606,6 +616,7 @@ public sealed class EventService
     /// </summary>
     public async Task HandleThreadDeletedAsync(ulong threadId)
     {
+        string? line = null;
         await _gate.WaitAsync();
         try
         {
@@ -613,14 +624,132 @@ public sealed class EventService
             if (e is null)
                 return;
 
+            line = DeletionAudit.RemovalLine("thread", e.DisplayName, _renderer.FormatLocal(e));
             _store.Remove(e);
             await _store.SaveAsync();
-            _log.Warn($"The thread of event **{e.DisplayName}** ({_renderer.FormatLocal(e)}) was deleted, so the event was removed.");
         }
         finally
         {
             _gate.Release();
         }
+
+        if (line is not null)
+            ReportRemoval(line, threadId, channelId: null, messageAuthorId: null);
+    }
+
+    /// <summary>
+    /// Logs the removal at once when this process has no guild (unit tests, or the bot is not in the server).
+    /// Otherwise the audit-log read runs after the save, off the work queue, and retries on its own.
+    /// </summary>
+    private void ReportRemoval(string line, ulong? threadId, ulong? channelId, ulong? messageAuthorId)
+    {
+        var guild = Guild;
+        if (guild is null)
+        {
+            _log.Warn(DeletionAudit.WithActor(line, null));
+            return;
+        }
+
+        var observedAt = DateTimeOffset.UtcNow;
+        try
+        {
+            _ = Task.Run(() => ResolveActorAndLogAsync(guild, line, threadId, channelId, messageAuthorId, observedAt));
+        }
+        catch (Exception ex)
+        {
+            _log.Warn(DeletionAudit.WithActor(line, null));
+            WarnAuditOnce(ex.Message);
+        }
+    }
+
+    private async Task ResolveActorAndLogAsync(
+        SocketGuild guild,
+        string line,
+        ulong? threadId,
+        ulong? channelId,
+        ulong? messageAuthorId,
+        DateTimeOffset observedAt)
+    {
+        ulong? actor = null;
+        string? failure = null;
+        try
+        {
+            for (var attempt = 1; attempt <= DeletionAudit.AttemptCount; attempt++)
+            {
+                try
+                {
+                    actor = null;
+                    if (threadId is ulong tid)
+                    {
+                        var threadEntries = await ReadAuditEntriesAsync(guild, ActionType.ThreadDelete);
+                        actor = DeletionAudit.FindActor(threadEntries, tid, channelId: null, messageAuthorId: null, observedAt);
+                    }
+
+                    if (actor is null && channelId is ulong cid)
+                    {
+                        var messageEntries = await ReadAuditEntriesAsync(guild, ActionType.MessageDeleted);
+                        actor = DeletionAudit.FindActor(messageEntries, threadId: null, cid, messageAuthorId, observedAt);
+                    }
+
+                    failure = null;
+                }
+                catch (Exception ex)
+                {
+                    actor = null;
+                    failure = ex.Message;
+                }
+
+                if (actor is not null || attempt == DeletionAudit.AttemptCount)
+                    break;
+                await Task.Delay(DeletionAudit.RetryDelay);
+            }
+        }
+        catch (Exception ex)
+        {
+            actor = null;
+            failure ??= ex.Message;
+        }
+
+        _log.Warn(DeletionAudit.WithActor(line, actor));
+        if (actor is null)
+            WarnAuditOnce(failure);
+    }
+
+    private static async Task<IReadOnlyList<DeletionAudit.Entry>> ReadAuditEntriesAsync(SocketGuild guild, ActionType action)
+    {
+        await foreach (var page in guild.GetAuditLogsAsync(15, actionType: action))
+            return page.Select(ToEntry).ToList();
+        return Array.Empty<DeletionAudit.Entry>();
+    }
+
+    private static DeletionAudit.Entry ToEntry(RestAuditLogEntry entry)
+    {
+        ulong? threadId = null;
+        ulong? channelId = null;
+        ulong? authorId = null;
+        switch (entry.Data)
+        {
+            case ThreadDeleteAuditLogData thread:
+                threadId = thread.ThreadId;
+                break;
+            case MessageDeleteAuditLogData message:
+                channelId = message.ChannelId;
+                authorId = message.Target?.Id;
+                break;
+        }
+
+        return new DeletionAudit.Entry(entry.User?.Id ?? 0, entry.CreatedAt, threadId, channelId, authorId);
+    }
+
+    private void WarnAuditOnce(string? failure)
+    {
+        if (Interlocked.Exchange(ref _auditActorWarned, 1) != 0)
+            return;
+
+        var reason = string.IsNullOrWhiteSpace(failure) ? "No matching audit entry was found." : failure;
+        _log.Warn(
+            $"Could not name who deleted an event. {reason} The bot needs View Audit Log (a server permission). " +
+            "Discord writes no audit entry when a member deletes their own message, so that deletion stays (deleter unknown) even with the permission.");
     }
 
     // ------------------------------------------------------------------ startup reconciliation

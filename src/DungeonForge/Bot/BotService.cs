@@ -171,6 +171,9 @@ public sealed class BotService : BackgroundService
                     _log.Warn($"The Discord role for \"{label}\" ({role}) does not exist on the server. Create it or fix global.json.");
             }
 
+            if (guild.CurrentUser?.GuildPermissions.ViewAuditLog != true)
+                _log.Warn("The bot does not have View Audit Log. Deleted event threads and messages will be logged as (deleter unknown) until that server permission is granted.");
+
             await _interactions.RegisterCommandsToGuildAsync(global.GuildId, deleteMissing: true);
 
             await _events.ReconcileAllAsync();

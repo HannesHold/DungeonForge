@@ -26,7 +26,8 @@ public class ThreadDeletionTests
         await reloaded.LoadAsync();
         Assert.Null(reloaded.FindByThreadId(50));
         Assert.NotNull(reloaded.FindByThreadId(60));
-        Assert.Contains(harness.Log.Warnings, w => w.Contains("Molten Core") && w.Contains("was deleted") && w.Contains("was removed"));
+        Assert.Contains(harness.Log.Warnings, w =>
+            w.Contains("Molten Core") && w.Contains("was deleted") && w.Contains("was removed") && w.Contains("(deleter unknown)"));
     }
 
     [Fact]
@@ -54,7 +55,10 @@ public class ThreadDeletionTests
         await harness.Events.HandleThreadDeletedAsync(50);
 
         Assert.Empty(harness.Store.Events);
-        Assert.Single(harness.Log.Warnings);
+        var warning = Assert.Single(harness.Log.Warnings);
+        Assert.Contains("was deleted", warning);
+        Assert.Contains("was removed", warning);
+        Assert.Contains("(deleter unknown)", warning);
     }
 
     [Fact]
