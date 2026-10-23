@@ -120,22 +120,63 @@ public class EventsChannelTests
     public void StartupMessage_NamesTheKindAndAnyMissingPermissions()
     {
         var granted = new EventsChannelPermissionSnapshot(true, true, true, true, true, true, true, true, true);
-        Assert.Empty(EventsChannelSupport.MissingPermissions(granted));
+        Assert.Empty(EventsChannelSupport.MissingPermissions(granted, EventsChannelKind.Text));
 
         var missingSend = granted with { SendMessages = false, EmbedLinks = false };
-        var missing = EventsChannelSupport.MissingPermissions(missingSend);
+        var missing = EventsChannelSupport.MissingPermissions(missingSend, EventsChannelKind.Text);
         Assert.Equal(new[] { "Send Messages", "Embed Links" }, missing);
 
-        var forum = EventsChannelSupport.StartupMessage("dungeon-forge-forum", EventsChannelKind.Forum, missing);
-        Assert.Contains("forum", forum);
-        Assert.Contains("dungeon-forge-forum", forum);
-        Assert.Contains("Send Messages", forum);
-        Assert.Contains("Create Posts", forum);
-        Assert.Contains("Missing right now: Send Messages, Embed Links.", forum);
+        var textMissing = EventsChannelSupport.StartupMessage("events", EventsChannelKind.Text, missing);
+        Assert.Contains("text channel", textMissing);
+        Assert.Contains("Missing right now: Send Messages, Embed Links.", textMissing);
 
         var text = EventsChannelSupport.StartupMessage("events", EventsChannelKind.Text, Array.Empty<string>());
         Assert.Contains("text channel", text);
         Assert.Contains("Create Public Threads", text);
         Assert.DoesNotContain("Missing right now", text);
+    }
+
+    [Fact]
+    public void MissingPermissions_ForumDoesNotReportCreatePublicThreads()
+    {
+        var forumChannel = new EventsChannelPermissionSnapshot(
+            ViewChannel: true,
+            SendMessages: true,
+            CreatePublicThreads: false,
+            SendMessagesInThreads: true,
+            ManageThreads: true,
+            ManageMessages: true,
+            AddReactions: true,
+            ReadMessageHistory: true,
+            EmbedLinks: true);
+
+        var missing = EventsChannelSupport.MissingPermissions(forumChannel, EventsChannelKind.Forum);
+        Assert.Empty(missing);
+
+        var report = EventsChannelSupport.StartupMessage("dungeon-forge-forum", EventsChannelKind.Forum, missing);
+        Assert.Contains("forum", report);
+        Assert.Contains("Create Posts", report);
+        Assert.Contains("Send Messages in Posts", report);
+        Assert.DoesNotContain("Create Public Threads", report);
+        Assert.DoesNotContain("Missing right now", report);
+
+        var missingPosts = EventsChannelSupport.MissingPermissions(
+            forumChannel with { SendMessages = false, EmbedLinks = false },
+            EventsChannelKind.Forum);
+        Assert.Equal(new[] { "Create Posts", "Embed Links" }, missingPosts);
+        var warned = EventsChannelSupport.StartupMessage("dungeon-forge-forum", EventsChannelKind.Forum, missingPosts);
+        Assert.Contains("Missing right now: Create Posts, Embed Links.", warned);
+        Assert.DoesNotContain("Create Public Threads", warned);
+    }
+
+    [Fact]
+    public void MissingPermissions_TextChannelStillReportsCreatePublicThreads()
+    {
+        var textChannel = new EventsChannelPermissionSnapshot(true, true, false, true, true, true, true, true, true);
+        var missing = EventsChannelSupport.MissingPermissions(textChannel, EventsChannelKind.Text);
+        Assert.Equal(new[] { "Create Public Threads" }, missing);
+
+        var report = EventsChannelSupport.StartupMessage("events", EventsChannelKind.Text, missing);
+        Assert.Contains("Missing right now: Create Public Threads.", report);
     }
 }

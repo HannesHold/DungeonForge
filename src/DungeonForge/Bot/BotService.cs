@@ -212,6 +212,7 @@ public sealed class BotService : BackgroundService
             try
             {
                 var perms = me.GetPermissions(guildChannel);
+                // Channel effective permissions. CreatePublicThreads is passed through and ignored for a forum.
                 missing = EventsChannelSupport.MissingPermissions(new EventsChannelPermissionSnapshot(
                     perms.ViewChannel,
                     perms.SendMessages,
@@ -221,7 +222,7 @@ public sealed class BotService : BackgroundService
                     perms.ManageMessages,
                     perms.AddReactions,
                     perms.ReadMessageHistory,
-                    perms.EmbedLinks)).ToArray();
+                    perms.EmbedLinks), match.Kind).ToArray();
             }
             catch (Exception ex)
             {

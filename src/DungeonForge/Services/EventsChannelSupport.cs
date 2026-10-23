@@ -103,8 +103,16 @@ public static class EventsChannelSupport
         return new ForumTagSelection(true, tag.Id, tag.Name, null);
     }
 
-    public static IReadOnlyList<string> MissingPermissions(EventsChannelPermissionSnapshot granted)
+    /// <summary>
+    /// Permissions the bot must have on the events channel.
+    /// A forum uses Create Posts (Send Messages) and Send Messages in Posts.
+    /// Its overwrite screen has no Create Public Threads toggle, and the effective channel permission for that bit
+    /// can be false even when the role has it on the server, so a forum never reports it missing.
+    /// A text channel still requires Create Public Threads for its standalone thread.
+    /// </summary>
+    public static IReadOnlyList<string> MissingPermissions(EventsChannelPermissionSnapshot granted, EventsChannelKind kind)
     {
+        var forum = kind == EventsChannelKind.Forum;
         var missing = new List<string>();
         void Need(bool ok, string name)
         {
@@ -113,9 +121,10 @@ public static class EventsChannelSupport
         }
 
         Need(granted.ViewChannel, "View Channel");
-        Need(granted.SendMessages, "Send Messages");
-        Need(granted.CreatePublicThreads, "Create Public Threads");
-        Need(granted.SendMessagesInThreads, "Send Messages in Threads");
+        Need(granted.SendMessages, forum ? "Create Posts" : "Send Messages");
+        if (!forum)
+            Need(granted.CreatePublicThreads, "Create Public Threads");
+        Need(granted.SendMessagesInThreads, forum ? "Send Messages in Posts" : "Send Messages in Threads");
         Need(granted.ManageThreads, "Manage Threads");
         Need(granted.ManageMessages, "Manage Messages");
         Need(granted.AddReactions, "Add Reactions");
@@ -126,11 +135,19 @@ public static class EventsChannelSupport
 
     public static string StartupMessage(string channelName, EventsChannelKind kind, IReadOnlyList<string> missing)
     {
-        var where = kind == EventsChannelKind.Forum
-            ? $"Events channel **{channelName}** is a forum channel. Each event is a forum post. Creating a post uses Send Messages (Discord's Create Posts). Create Public Threads is what a text events channel uses for a standalone thread."
-            : $"Events channel **{channelName}** is a text channel. Each event is a public thread in that channel (Create Public Threads).";
+        string where;
+        string needed;
+        if (kind == EventsChannelKind.Forum)
+        {
+            where = $"Events channel **{channelName}** is a forum channel. Each event is a forum post. Creating a post needs Create Posts.";
+            needed = " The bot needs View Channel, Create Posts, Send Messages in Posts, Manage Threads, Manage Messages, Add Reactions, Read Message History, and Embed Links.";
+        }
+        else
+        {
+            where = $"Events channel **{channelName}** is a text channel. Each event is a public thread in that channel (Create Public Threads).";
+            needed = " The bot needs View Channel, Send Messages, Create Public Threads, Send Messages in Threads, Manage Threads, Manage Messages, Add Reactions, Read Message History, and Embed Links.";
+        }
 
-        var needed = " The bot needs View Channel, Send Messages, Create Public Threads, Send Messages in Threads, Manage Threads, Manage Messages, Add Reactions, Read Message History, and Embed Links.";
         if (missing.Count == 0)
             return where + needed;
 

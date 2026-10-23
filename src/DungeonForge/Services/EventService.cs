@@ -244,6 +244,7 @@ public sealed class EventService
     /// <summary>
     /// Forum post whose title is the event thread name and whose starter message is the sign-up embed.
     /// The starter message id equals the post id. A required tag uses the first tag on the forum.
+    /// <see cref="SocketForumChannel.CreatePostAsync"/> needs Create Posts (Send Messages). It does not use Create Public Threads.
     /// </summary>
     private async Task<(IThreadChannel? Thread, string? Error)> CreateForumPostAsync(SocketForumChannel forum, EventInstance instance)
     {
@@ -317,7 +318,7 @@ public sealed class EventService
         }
 
         _log.Warn($"Could not create the forum post in **{forum.Name}**: {last?.Message}");
-        return (null, "I could not create a post in the events forum (needs Send Messages). See the log channel/console.");
+        return (null, "I could not create a post in the events forum (needs Create Posts). See the log channel/console.");
     }
 
     private (IThreadChannel? Thread, string? Error) ForumPostFailed(SocketForumChannel forum, HttpException ex)
@@ -329,8 +330,8 @@ public sealed class EventService
             return (null, text);
         }
 
-        _log.Warn($"Could not create a post in **{forum.Name}** (needs Send Messages): {ex.Message}");
-        return (null, "I could not create a post in the events forum (needs Send Messages). See the log channel/console.");
+        _log.Warn($"Could not create a post in **{forum.Name}** (needs Create Posts): {ex.Message}");
+        return (null, "I could not create a post in the events forum (needs Create Posts). See the log channel/console.");
     }
 
     private static ForumTag[] MatchingTags(SocketForumChannel forum, ulong tagId) =>
