@@ -1,0 +1,14 @@
+{
+  "name": "BlackrockSpire10",
+  "type": "Dungeon",
+  "displayName": "Blackrock Spire",
+  "attendiesRequired": 10,
+  "attendyPerRole": {
+    "Tank": 2,
+    "Heal": 2,
+    "Melee-DPS": 3,
+    "Range-DPS": 3
+  },
+  "dateTime": "2026-10-24T18:00:00",
+  "durationInHours": 3
+}

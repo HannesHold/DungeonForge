@@ -1,0 +1,14 @@
+{
+  "name": "OnyxiasLair40",
+  "type": "Raid",
+  "displayName": "Onyxia's Lair",
+  "attendiesRequired": 40,
+  "attendyPerRole": {
+    "Tank": 4,
+    "Heal": 9,
+    "Melee-DPS": 13,
+    "Range-DPS": 14
+  },
+  "dateTime": "2026-10-24T18:00:00",
+  "durationInHours": 2
+}

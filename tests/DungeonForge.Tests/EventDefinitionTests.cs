@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DungeonForge.Configuration;
 using DungeonForge.Models;
 using DungeonForge.Services;
@@ -6,7 +7,19 @@ namespace DungeonForge.Tests;
 
 public class EventDefinitionTests
 {
-    /// <summary>Every file shipped in EventConfigurations, in autocomplete (ordinal, case-insensitive) order.</summary>
+    /// <summary>Raid template names. Every other shipped file is a dungeon.</summary>
+    private static readonly HashSet<string> RaidNames = new(StringComparer.Ordinal)
+    {
+        "AhnQirajTemple40",
+        "BlackwingLair40",
+        "MoltenCore40",
+        "Naxxramas40",
+        "OnyxiasLair40",
+        "RuinsOfAhnQiraj20",
+        "ZulGurub20",
+    };
+
+    /// <summary>Every file shipped in EventConfigurations, in file-name (ordinal, case-insensitive) order.</summary>
     private static readonly (string Name, string DisplayName, int Players, double Hours, int Tank, int Heal, int Melee, int Range)[] ShippedTemplates =
     {
         ("AhnQirajTemple40", "Ahn'Qiraj Temple", 40, 5, 4, 9, 13, 14),
@@ -56,12 +69,18 @@ public class EventDefinitionTests
         var (valid, errors) = repo.LoadAll();
         Assert.Empty(errors);
 
-        var onDisk = Directory.GetFiles(Path.Combine(TestSupport.ProjectDir, "EventConfigurations"), "*.json")
+        var eventsDir = Path.Combine(TestSupport.ProjectDir, "EventConfigurations");
+        var onDisk = Directory.GetFiles(eventsDir, "*.json", SearchOption.AllDirectories)
             .Select(Path.GetFileNameWithoutExtension)
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase);
         Assert.Equal(ShippedTemplates.Select(t => t.Name), onDisk);
         Assert.Equal(ShippedTemplates.Select(t => t.Name), valid.Select(v => v.Name));
         Assert.Equal(30, valid.Count);
+        Assert.Empty(Directory.GetFiles(eventsDir, "*.json", SearchOption.TopDirectoryOnly));
+        Assert.Equal(7, Directory.GetFiles(Path.Combine(eventsDir, "Raids"), "*.json").Length);
+        Assert.Equal(23, Directory.GetFiles(Path.Combine(eventsDir, "Dungeons"), "*.json").Length);
+        Assert.Equal(7, valid.Count(v => v.Type == EventType.Raid));
+        Assert.Equal(23, valid.Count(v => v.Type == EventType.Dungeon));
         Assert.Equal(22, valid.Count(v => v.AttendiesRequired == 5));
         Assert.Equal(1, valid.Count(v => v.AttendiesRequired == 10));
         Assert.Equal(2, valid.Count(v => v.AttendiesRequired == 20));
@@ -71,6 +90,11 @@ public class EventDefinitionTests
         foreach (var spec in ShippedTemplates)
         {
             var def = valid.Single(v => v.Name == spec.Name);
+            var path = Directory.GetFiles(eventsDir, spec.Name + ".json", SearchOption.AllDirectories).Single();
+            var folder = Path.GetFileName(Path.GetDirectoryName(path));
+            var expectedType = RaidNames.Contains(spec.Name) ? EventType.Raid : EventType.Dungeon;
+            Assert.Equal(expectedType == EventType.Raid ? "Raids" : "Dungeons", folder);
+            Assert.Equal(expectedType, def.Type);
             Assert.Equal(spec.DisplayName, def.DisplayName);
             Assert.Equal(spec.Players, def.AttendiesRequired);
             Assert.Equal(spec.Hours, def.DurationInHours);
@@ -90,6 +114,7 @@ public class EventDefinitionTests
     {
         var def = ShippedRepo().Load("moltencore40");
         Assert.Equal("MoltenCore40", def.Name);
+        Assert.Equal(EventType.Raid, def.Type);
         Assert.Equal("Molten Core", def.DisplayName);
         Assert.Equal(40, def.AttendiesRequired);
         Assert.Equal(40, def.AttendyPerRole.Values.Sum());
@@ -116,11 +141,15 @@ public class EventDefinitionTests
         Assert.Contains(@"EventConfigurations\**\*.json", csproj);
         Assert.Contains("CopyToOutputDirectory", csproj);
 
-        var sourceNames = Directory.GetFiles(Path.Combine(TestSupport.ProjectDir, "EventConfigurations"), "*.json")
+        var eventsDir = Path.Combine(TestSupport.ProjectDir, "EventConfigurations");
+        var sourceNames = Directory.GetFiles(eventsDir, "*.json", SearchOption.AllDirectories)
             .Select(Path.GetFileName)
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();
         Assert.Equal(ShippedTemplates.Select(t => t.Name + ".json"), sourceNames);
+        var sourceRelative = Directory.GetFiles(eventsDir, "*.json", SearchOption.AllDirectories)
+            .Select(path => Path.GetRelativePath(eventsDir, path).Replace('\\', '/'))
+            .ToHashSet(StringComparer.Ordinal);
 
         var outputDirs = Directory.GetDirectories(
             Path.Combine(TestSupport.ProjectDir, "bin"), "net10.0", SearchOption.AllDirectories);
@@ -128,11 +157,15 @@ public class EventDefinitionTests
         Assert.Contains(outputDirs, dir =>
         {
             var copied = Path.Combine(dir, "EventConfigurations");
-            if (!Directory.Exists(copied)) return false;
-            var names = Directory.GetFiles(copied, "*.json")
-                .Select(Path.GetFileName)
+            var raids = Path.Combine(copied, "Raids");
+            var dungeons = Path.Combine(copied, "Dungeons");
+            if (!Directory.Exists(raids) || !Directory.Exists(dungeons)) return false;
+            var relative = Directory.GetFiles(copied, "*.json", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(copied, path).Replace('\\', '/'))
                 .ToHashSet(StringComparer.Ordinal);
-            return sourceNames.All(names.Contains);
+            return sourceRelative.All(relative.Contains)
+                && Directory.GetFiles(raids, "*.json").Length == 7
+                && Directory.GetFiles(dungeons, "*.json").Length == 23;
         });
     }
 
@@ -148,6 +181,7 @@ public class EventDefinitionTests
         var def = new EventDefinition
         {
             Name = "Other",
+            Type = EventType.Raid,
             DisplayName = "",
             AttendiesRequired = 10,
             DurationInHours = 0,
@@ -168,7 +202,7 @@ public class EventDefinitionTests
     {
         var def = new EventDefinition
         {
-            Name = "X", DisplayName = "X", AttendiesRequired = 0, DurationInHours = 1,
+            Name = "X", Type = EventType.Dungeon, DisplayName = "X", AttendiesRequired = 0, DurationInHours = 1,
             AttendyPerRole = new() { ["Bench"] = 1 },
         };
         var errors = EventDefinitionValidator.Validate(def, "X", TestSupport.Roles);
@@ -183,5 +217,156 @@ public class EventDefinitionTests
         File.WriteAllText(path, "{ nope");
         var ex = Assert.Throws<ConfigurationException>(() => EventDefinitionRepository.LoadFile(path, "Bad", TestSupport.Roles));
         Assert.Contains("Bad.json: invalid JSON", ex.Message);
+    }
+
+    [Fact]
+    public void Type_JsonConverter_IsCaseInsensitive_AndRejectsUnknownOrNumericValues()
+    {
+        var raid = JsonSerializer.Deserialize<EventDefinition>("""{"type":"raid"}""", JsonDefaults.ConfigFiles);
+        Assert.Equal(EventType.Raid, raid!.Type);
+        var dungeon = JsonSerializer.Deserialize<EventDefinition>("""{"type":"DUNGEON"}""", JsonDefaults.ConfigFiles);
+        Assert.Equal(EventType.Dungeon, dungeon!.Type);
+        Assert.Null(JsonSerializer.Deserialize<EventDefinition>("""{"name":"X"}""", JsonDefaults.ConfigFiles)!.Type);
+
+        var number = Assert.Throws<JsonException>(() =>
+            JsonSerializer.Deserialize<EventDefinition>("""{"type":1}""", JsonDefaults.ConfigFiles));
+        Assert.Contains("type", number.Message);
+        var unknown = Assert.Throws<JsonException>(() =>
+            JsonSerializer.Deserialize<EventDefinition>("""{"type":"Battleground"}""", JsonDefaults.ConfigFiles));
+        Assert.Contains("Battleground", unknown.Message);
+    }
+
+    [Fact]
+    public void LoadFile_MissingType_IsAValidationError()
+    {
+        var json = TemplateJson("Ok", "Raid").Replace("\"type\": \"Raid\",\n", "");
+        var path = WriteJson("Ok.json", json);
+        var ex = Assert.Throws<ConfigurationException>(() => EventDefinitionRepository.LoadFile(path, "Ok", TestSupport.Roles));
+        Assert.Contains("\"type\" is missing", ex.Message);
+        Assert.DoesNotContain("invalid JSON", ex.Message);
+    }
+
+    [Fact]
+    public void LoadFile_UnknownType_IsAValidationError_AndOtherProblemsAreStillReported()
+    {
+        var path = WriteJson("Ok.json", TemplateJson("Ok", "Battleground", displayName: ""));
+        var ex = Assert.Throws<ConfigurationException>(() => EventDefinitionRepository.LoadFile(path, "Ok", TestSupport.Roles));
+        Assert.Contains("\"type\" is 'Battleground' but must be \"Raid\" or \"Dungeon\".", ex.Message);
+        Assert.Contains("displayName", ex.Message);
+
+        var numeric = WriteJson("Num.json", TemplateJson("Num", type: null).Replace("\"type\": null", "\"type\": 1"));
+        var numericError = Assert.Throws<ConfigurationException>(() =>
+            EventDefinitionRepository.LoadFile(numeric, "Num", TestSupport.Roles));
+        Assert.Contains("\"type\" is '1'", numericError.Message);
+    }
+
+    [Fact]
+    public void LoadFile_TypeIsCaseInsensitive_AndMustMatchRaidsOrDungeonsFolder()
+    {
+        var raid = WriteJson("Ok.json", TemplateJson("Ok", "raid"));
+        var loaded = EventDefinitionRepository.LoadFile(raid, "Ok", TestSupport.Roles, "Raids");
+        Assert.Equal(EventType.Raid, loaded.Type);
+
+        var mismatch = WriteJson("Nope.json", TemplateJson("Nope", "Dungeon"));
+        var ex = Assert.Throws<ConfigurationException>(() =>
+            EventDefinitionRepository.LoadFile(mismatch, "Nope", TestSupport.Roles, "Raids"));
+        Assert.Contains("\"type\" is 'Dungeon'", ex.Message);
+        Assert.Contains("Raids", ex.Message);
+        Assert.Contains("\"Raid\"", ex.Message);
+
+        var root = EventDefinitionRepository.LoadFile(raid, "Ok", TestSupport.Roles, "EventConfigurations");
+        Assert.Equal(EventType.Raid, root.Type);
+    }
+
+    [Fact]
+    public void Repository_FindsTemplatesInSubfolders_AndRejectsDuplicateNames()
+    {
+        var root = Directory.CreateTempSubdirectory().FullName;
+        var events = Path.Combine(root, "EventConfigurations");
+        WriteJson(Path.Combine(events, "Loose.json"), TemplateJson("Loose", "dungeon"));
+        WriteJson(Path.Combine(events, "Dungeons", "Classic", "Deep.json"), TemplateJson("Deep", "Dungeon"));
+        WriteJson(Path.Combine(events, "Raids", "Twin.json"), TemplateJson("Twin", "Raid"));
+        WriteJson(Path.Combine(events, "Dungeons", "Twin.json"), TemplateJson("Twin", "Dungeon"));
+        WriteJson(Path.Combine(events, "Raids", "Wrong.json"), TemplateJson("Wrong", "Dungeon"));
+
+        var repo = RepoAt(root);
+        Assert.Equal(EventType.Dungeon, repo.Load("loose").Type);
+        Assert.Equal("Deep", repo.Load("Deep").Name);
+
+        var duplicate = Assert.Throws<ConfigurationException>(() => repo.Load("Twin"));
+        Assert.Contains("Duplicate event name 'Twin'", duplicate.Message);
+        Assert.Contains("Dungeons/Twin.json", duplicate.Message);
+        Assert.Contains("Raids/Twin.json", duplicate.Message);
+
+        var (valid, errors) = repo.LoadAll();
+        Assert.Contains(valid, template => template.Name == "Loose");
+        Assert.Contains(valid, template => template.Name == "Deep");
+        Assert.DoesNotContain(valid, template => template.Name == "Twin");
+        Assert.Contains(errors, error => error.Contains("Duplicate event name 'Twin'")
+            && error.Contains("Dungeons/Twin.json") && error.Contains("Raids/Twin.json"));
+
+        var mismatch = Assert.Throws<ConfigurationException>(() => repo.Load("Wrong"));
+        Assert.Contains("Raids", mismatch.Message);
+        Assert.Contains("\"type\" is 'Dungeon'", mismatch.Message);
+    }
+
+    [Fact]
+    public void Autocomplete_OrdersRaidsThenDungeons_FiltersWhatWasTyped_AndCapsAt25()
+    {
+        var templates = ShippedRepo().LoadAll().Valid;
+        var all = EventTemplateAutocomplete.Suggest(templates, "");
+        Assert.Equal(EventTemplateAutocomplete.DiscordChoiceLimit, all.Count);
+        Assert.Equal("AhnQirajTemple40", all[0].Value);
+        Assert.Equal("Ahn'Qiraj Temple (Raid, 40)", all[0].Label);
+        Assert.All(all.Take(7), choice => Assert.Contains("(Raid, ", choice.Label));
+        Assert.All(all.Skip(7), choice => Assert.Contains("(Dungeon, ", choice.Label));
+        Assert.Equal("Blackfathom Deeps (Dungeon, 5)", all[7].Label);
+        Assert.Equal("Stratholme5", all[^1].Value);
+        Assert.DoesNotContain(all, choice => choice.Value == "SunkenTemple5");
+
+        var raidLabels = all.Take(7).Select(choice => choice.Label).ToList();
+        Assert.Equal(raidLabels.OrderBy(label => label, StringComparer.OrdinalIgnoreCase), raidLabels);
+
+        var molten = Assert.Single(EventTemplateAutocomplete.Suggest(templates, "molten"));
+        Assert.Equal(("Molten Core (Raid, 40)", "MoltenCore40"), molten);
+
+        var sunken = Assert.Single(EventTemplateAutocomplete.Suggest(templates, "Sunken"));
+        Assert.Equal(("Sunken Temple (Dungeon, 5)", "SunkenTemple5"), sunken);
+
+        Assert.Equal(
+            new[] { "BlackrockDepths5", "BlackrockSpire10" },
+            EventTemplateAutocomplete.Suggest(templates, "blackrock").Select(choice => choice.Value));
+
+        var raids = EventTemplateAutocomplete.Suggest(templates, "Raid");
+        Assert.Equal(7, raids.Count);
+        Assert.All(raids, choice => Assert.Contains("(Raid, ", choice.Label));
+    }
+
+    private static EventDefinitionRepository RepoAt(string root) =>
+        new(new BotConfiguration(new GlobalConfig(), TestSupport.Roles, TestSupport.FixedRoles, TimeZoneInfo.Utc, root));
+
+    private static string TemplateJson(string name, string? type, string? displayName = null)
+    {
+        displayName ??= name + " display";
+        var typeJson = type is null ? "null" : $"\"{type}\"";
+        return $$"""
+            {
+              "name": "{{name}}",
+              "type": {{typeJson}},
+              "displayName": "{{displayName}}",
+              "attendiesRequired": 2,
+              "attendyPerRole": { "Tank": 1, "Heal": 1 },
+              "durationInHours": 2
+            }
+            """;
+    }
+
+    private static string WriteJson(string path, string json)
+    {
+        if (!Path.IsPathRooted(path))
+            path = Path.Combine(Directory.CreateTempSubdirectory().FullName, path);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, json);
+        return path;
     }
 }

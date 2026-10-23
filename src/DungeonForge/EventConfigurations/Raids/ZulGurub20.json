@@ -1,0 +1,14 @@
+{
+  "name": "ZulGurub20",
+  "type": "Raid",
+  "displayName": "Zul'Gurub",
+  "attendiesRequired": 20,
+  "attendyPerRole": {
+    "Tank": 2,
+    "Heal": 4,
+    "Melee-DPS": 7,
+    "Range-DPS": 7
+  },
+  "dateTime": "2026-10-24T18:00:00",
+  "durationInHours": 3
+}

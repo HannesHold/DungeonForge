@@ -1,12 +1,17 @@
 namespace DungeonForge.Models;
 
 /// <summary>
-/// Template of a dungeon / raid (EventConfigurations/&lt;name&gt;.json).
-/// <see cref="DateTime"/> is only a template/default; the real date and time come from the slash command.
+/// Template of a dungeon or raid (<c>EventConfigurations/Raids</c>, <c>EventConfigurations/Dungeons</c>, or a file
+/// directly under <c>EventConfigurations</c>). <see cref="DateTime"/> is only a template/default; the real date
+/// and time come from the slash command.
 /// </summary>
 public sealed class EventDefinition
 {
     public string Name { get; set; } = "";
+
+    /// <summary>"Raid" or "Dungeon". Null when the JSON omitted it or the value was not a known type.</summary>
+    public EventType? Type { get; set; }
+
     public string DisplayName { get; set; } = "";
     public int AttendiesRequired { get; set; }
 

@@ -4,60 +4,104 @@ using DungeonForge.Models;
 namespace DungeonForge.Services;
 
 /// <summary>
-/// Builds the ephemeral reply for /dflisteventtemplates. No I/O and no Discord types, so the layout and
-/// the message-length rules can be tested on their own. Feed it <see cref="EventDefinitionRepository.LoadAll"/>.
+/// Builds the ephemeral reply for /dflisteventtemplates, /dflistraidtemplates and /dflistdungeontemplates.
+/// No I/O and no Discord types, so the layout and the message-length rules can be tested on their own.
+/// Feed it <see cref="EventDefinitionRepository.LoadAll"/>. Pass <paramref name="type"/> to list one kind.
 /// </summary>
 public static class EventTemplateListFormatter
 {
     /// <summary>Discord message content limit, in UTF-16 code units (the same unit <see cref="string.Length"/> uses).</summary>
     public const int DiscordMessageLimit = 2000;
 
-    private const string TruncationNote = "… (truncated)";
-
     /// <summary>
     /// One or more message bodies, each at most <paramref name="maxLength"/> characters.
-    /// An empty catalog says so. Invalid files (the error strings from
-    /// <see cref="EventDefinitionRepository.LoadAll"/>) are grouped under an "Invalid templates" section
-    /// and never throw. Lines that cannot fit are cut, with a note; everything else is split across messages.
+    /// Raids are listed before dungeons; each section is alphabetical by display name.
+    /// <paramref name="type"/> keeps only that kind (the two filtered list commands). Invalid files (the error
+    /// strings from <see cref="EventDefinitionRepository.LoadAll"/>) are grouped under an "Invalid templates"
+    /// section and never throw. Lines that cannot fit are cut, with a note; everything else is split across messages.
     /// </summary>
     public static IReadOnlyList<string> Format(
         IReadOnlyList<EventDefinition> templates,
         IReadOnlyList<string> errors,
-        int maxLength = DiscordMessageLimit)
+        int maxLength = DiscordMessageLimit,
+        EventType? type = null)
     {
         if (maxLength < 1)
             throw new ArgumentOutOfRangeException(nameof(maxLength), "Message length limit must be positive.");
 
-        if (templates.Count == 0 && errors.Count == 0)
-            return new[] { Truncate("There are no event templates.", maxLength) };
+        var selected = templates
+            .Where(template => template.Type is EventType.Raid or EventType.Dungeon)
+            .Where(template => type is null || template.Type == type)
+            .ToList();
+
+        if (selected.Count == 0 && errors.Count == 0)
+            return DiscordMessagePacker.Pack(new[] { EmptyCatalogMessage(type, templates.Count == 0) }, maxLength);
 
         var lines = new List<string>();
-        if (templates.Count == 0)
+        if (selected.Count == 0)
         {
-            lines.Add("There are no valid event templates.");
+            lines.Add(type switch
+            {
+                EventType.Raid => "There are no raid templates.",
+                EventType.Dungeon => "There are no dungeon templates.",
+                _ => "There are no valid event templates.",
+            });
+        }
+        else if (type is null)
+        {
+            lines.Add($"**Event templates** ({selected.Count}) – the name is the value for /dfcreateevent");
+            AddSection(lines, "Raids", Sort(selected.Where(template => template.Type == EventType.Raid)), withHint: false);
+            AddSection(lines, "Dungeons", Sort(selected.Where(template => template.Type == EventType.Dungeon)), withHint: false);
         }
         else
         {
-            lines.Add($"**Event templates** ({templates.Count}) – the name is the value for /dfcreateevent");
-            lines.Add("");
-            foreach (var template in templates)
-                lines.Add(FormatTemplate(template));
+            var heading = type == EventType.Raid ? "Raids" : "Dungeons";
+            AddSection(lines, heading, Sort(selected), withHint: true);
         }
 
         if (errors.Count > 0)
         {
-            lines.Add("");
+            if (lines.Count > 0)
+                lines.Add("");
             lines.Add("**Invalid templates**");
             lines.Add("");
             foreach (var (name, reason) in GroupErrors(errors))
                 lines.Add($"• **{name}** – {reason}");
         }
 
-        var messages = Pack(lines, maxLength);
+        var messages = DiscordMessagePacker.Pack(lines, maxLength);
         if (messages.Count == 0)
-            messages.Add(Truncate("There are no event templates.", maxLength));
+            return DiscordMessagePacker.Pack(new[] { EmptyCatalogMessage(type, templates.Count == 0) }, maxLength);
         return messages;
     }
+
+    private static string EmptyCatalogMessage(EventType? type, bool nothingPassed) => type switch
+    {
+        EventType.Raid => "There are no raid templates.",
+        EventType.Dungeon => "There are no dungeon templates.",
+        _ when nothingPassed => "There are no event templates.",
+        _ => "There are no valid event templates.",
+    };
+
+    private static void AddSection(List<string> lines, string heading, IReadOnlyList<EventDefinition> templates, bool withHint)
+    {
+        if (templates.Count == 0)
+            return;
+
+        if (lines.Count > 0)
+            lines.Add("");
+        var hint = withHint ? " – the name is the value for /dfcreateevent" : "";
+        lines.Add($"**{heading}** ({templates.Count}){hint}");
+        lines.Add("");
+        foreach (var template in templates)
+            lines.Add(FormatTemplate(template));
+    }
+
+    private static List<EventDefinition> Sort(IEnumerable<EventDefinition> templates) =>
+        templates
+            .OrderBy(template => template.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(template => template.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     private static string FormatTemplate(EventDefinition template)
     {
@@ -82,7 +126,7 @@ public static class EventTemplateListFormatter
         {
             if (string.IsNullOrWhiteSpace(error)) continue;
 
-            var (name, reason) = SplitError(OneLine(error));
+            var (name, reason) = SplitError(DiscordMessagePacker.OneLine(error));
             var index = groups.FindIndex(g => g.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             if (index < 0)
                 groups.Add((name, new List<string> { reason }));
@@ -100,68 +144,4 @@ public static class EventTemplateListFormatter
         return (error[..index], error[(index + 2)..]);
     }
 
-    private static List<string> Pack(IReadOnlyList<string> lines, int maxLength)
-    {
-        var messages = new List<string>();
-        var current = new List<string>();
-        var length = 0;
-
-        void Flush()
-        {
-            if (current.Count == 0) return;
-            messages.Add(string.Join('\n', current));
-            current.Clear();
-            length = 0;
-        }
-
-        foreach (var raw in lines)
-        {
-            var line = Truncate(OneLine(raw), maxLength);
-            if (line.Length == 0)
-            {
-                // Keep a blank line between sections, but never start a message with one.
-                if (length == 0) continue;
-                if (length + 1 > maxLength)
-                {
-                    Flush();
-                    continue;
-                }
-
-                current.Add("");
-                length += 1;
-                continue;
-            }
-
-            var added = length == 0 ? line.Length : line.Length + 1;
-            if (length > 0 && length + added > maxLength)
-                Flush();
-
-            current.Add(line);
-            length += length == 0 ? line.Length : line.Length + 1;
-        }
-
-        Flush();
-        return messages;
-    }
-
-    private static string Truncate(string text, int maxLength)
-    {
-        if (text.Length <= maxLength) return text;
-        if (maxLength <= TruncationNote.Length)
-            return Cut(text, maxLength);
-        return Cut(text, maxLength - TruncationNote.Length) + TruncationNote;
-    }
-
-    /// <summary>Cuts on a UTF-16 boundary that is not the middle of a surrogate pair.</summary>
-    private static string Cut(string text, int maxChars)
-    {
-        if (maxChars <= 0) return "";
-        if (text.Length <= maxChars) return text;
-        if (char.IsHighSurrogate(text[maxChars - 1]))
-            maxChars--;
-        return maxChars <= 0 ? "" : text[..maxChars];
-    }
-
-    private static string OneLine(string text) =>
-        string.Join(' ', text.Split(['\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries));
 }

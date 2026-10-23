@@ -2,6 +2,7 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DungeonForge.Configuration;
+using DungeonForge.Models;
 using DungeonForge.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -9,6 +10,7 @@ namespace DungeonForge.Bot;
 
 /// <summary>Manager slash commands. Only usable in the manage channel by members of the manager role.</summary>
 [RequireContext(ContextType.Guild)]
+[ManagerOnly]
 public sealed class EventCommands : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly BotConfiguration _config;
@@ -17,9 +19,10 @@ public sealed class EventCommands : InteractionModuleBase<SocketInteractionConte
     private readonly EventService _events;
     private readonly EventRenderer _renderer;
     private readonly IBotLog _log;
+    private readonly InteractionService _interactions;
 
     public EventCommands(BotConfiguration config, ResolvedChannels channels, EventDefinitionRepository definitions,
-        EventService events, EventRenderer renderer, IBotLog log)
+        EventService events, EventRenderer renderer, IBotLog log, InteractionService interactions)
     {
         _config = config;
         _channels = channels;
@@ -27,11 +30,12 @@ public sealed class EventCommands : InteractionModuleBase<SocketInteractionConte
         _events = events;
         _renderer = renderer;
         _log = log;
+        _interactions = interactions;
     }
 
     [SlashCommand("dfcreateevent", "Create a dungeon/raid event, e.g. /dfcreateevent MoltenCore40 24.10.2026 18:00")]
     public async Task CreateEventAsync(
-        [Summary("event", "Name of the event file in EventConfigurations"), Autocomplete(typeof(EventFileAutocomplete))] string eventName,
+        [Summary("event", "Template name, for example MoltenCore40"), Autocomplete(typeof(EventFileAutocomplete))] string eventName,
         [Summary("date", "Date as dd.MM.yyyy, e.g. 24.10.2026")] string date,
         [Summary("time", "Time as HH:mm (24h), e.g. 18:00")] string time)
     {
@@ -101,19 +105,41 @@ public sealed class EventCommands : InteractionModuleBase<SocketInteractionConte
     }
 
     [SlashCommand("dflisteventtemplates", "List the available event templates")]
-    public async Task ListEventTemplatesAsync()
+    public Task ListEventTemplatesAsync() => ReplyWithTemplatesAsync(null);
+
+    [SlashCommand("dflistraidtemplates", "List the available raid templates")]
+    public Task ListRaidTemplatesAsync() => ReplyWithTemplatesAsync(EventType.Raid);
+
+    [SlashCommand("dflistdungeontemplates", "List the available dungeon templates")]
+    public Task ListDungeonTemplatesAsync() => ReplyWithTemplatesAsync(EventType.Dungeon);
+
+    [SlashCommand("dfhelp", "List Dungeon Forge commands and their parameters")]
+    public async Task HelpAsync()
     {
         await DeferAsync(ephemeral: true);
         if (!await CheckAccessAsync()) return;
 
-        var (valid, errors) = _definitions.LoadAll();
-        foreach (var message in EventTemplateListFormatter.Format(valid, errors))
+        var messages = CommandHelpFormatter.Format(
+            _interactions.SlashCommands,
+            _config.Global.Roles.Manager.Name,
+            _config.Global.Channels.Manage.Name);
+        foreach (var message in messages)
             await FollowupAsync(message, ephemeral: true);
     }
 
     // ---------------------------------------------------------------- helpers
 
-    private readonly record struct EventDefinitionRepositoryResult(Models.EventDefinition? Definition, string? Error);
+    private readonly record struct EventDefinitionRepositoryResult(EventDefinition? Definition, string? Error);
+
+    private async Task ReplyWithTemplatesAsync(EventType? type)
+    {
+        await DeferAsync(ephemeral: true);
+        if (!await CheckAccessAsync()) return;
+
+        var (valid, errors) = _definitions.LoadAll();
+        foreach (var message in EventTemplateListFormatter.Format(valid, errors, type: type))
+            await FollowupAsync(message, ephemeral: true);
+    }
 
     private EventDefinitionRepositoryResult LoadDefinition(string name)
     {
@@ -147,7 +173,7 @@ public sealed class EventCommands : InteractionModuleBase<SocketInteractionConte
     }
 }
 
-/// <summary>Suggests the names of the files in EventConfigurations.</summary>
+/// <summary>Suggests templates from EventConfigurations and its subfolders. The value is the template name.</summary>
 public sealed class EventFileAutocomplete : AutocompleteHandler
 {
     public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
@@ -155,11 +181,9 @@ public sealed class EventFileAutocomplete : AutocompleteHandler
     {
         var repo = services.GetRequiredService<EventDefinitionRepository>();
         var typed = autocompleteInteraction.Data.Current.Value?.ToString() ?? "";
-
-        var suggestions = repo.ListNames()
-            .Where(n => n.Contains(typed, StringComparison.OrdinalIgnoreCase))
-            .Take(25)
-            .Select(n => new AutocompleteResult(n, n));
+        var (valid, _) = repo.LoadAll();
+        var suggestions = EventTemplateAutocomplete.Suggest(valid, typed)
+            .Select(choice => new AutocompleteResult(choice.Label, choice.Value));
         return Task.FromResult(AutocompletionResult.FromSuccess(suggestions));
     }
 }

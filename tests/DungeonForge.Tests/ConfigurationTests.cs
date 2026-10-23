@@ -110,10 +110,16 @@ public class ConfigurationTests
             if (Path.GetFileName(file) == "global.json") text = editGlobal(text);
             File.WriteAllText(Path.Combine(target, Path.GetFileName(file)), text);
         }
-        var events = Path.Combine(root, "EventConfigurations");
-        Directory.CreateDirectory(events);
-        foreach (var file in Directory.GetFiles(Path.Combine(TestSupport.ProjectDir, "EventConfigurations")))
-            File.Copy(file, Path.Combine(events, Path.GetFileName(file)));
+        CopyDirectory(Path.Combine(TestSupport.ProjectDir, "EventConfigurations"), Path.Combine(root, "EventConfigurations"));
         return root;
+
+        static void CopyDirectory(string source, string destination)
+        {
+            Directory.CreateDirectory(destination);
+            foreach (var file in Directory.GetFiles(source))
+                File.Copy(file, Path.Combine(destination, Path.GetFileName(file)), overwrite: true);
+            foreach (var directory in Directory.GetDirectories(source))
+                CopyDirectory(directory, Path.Combine(destination, Path.GetFileName(directory)));
+        }
     }
 }

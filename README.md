@@ -28,10 +28,13 @@ The bot is generic: dungeons, roles, emoji, channel and Discord role names are a
 
 | Command | Description |
 | --- | --- |
-| `/dfcreateevent event date time` | Creates an event. `event` = file name in `EventConfigurations` (autocomplete), `date` = `dd.MM.yyyy`, `time` = `HH:mm` (24h) in the configured time zone. |
+| `/dfcreateevent event date time` | Creates an event. `event` is the template name (autocomplete searches `EventConfigurations` and every subfolder; the label looks like `Molten Core (Raid, 40)` and the value is the name, e.g. `MoltenCore40`). At most 25 matches, raids first then dungeons, each alphabetical by display name. `date` = `dd.MM.yyyy`, `time` = `HH:mm` (24h) in the configured time zone. |
 | `/dfcancelevent event` | Cancels an event (marks the message cancelled, clears reactions, archives + locks the thread). Autocomplete lists active events. |
 | `/dflistevents` | Lists active events with links. |
-| `/dflisteventtemplates` | Lists every template in `EventConfigurations`: name (the value for `/dfcreateevent`), display name, attendiesRequired, durationInHours and the per-role counts (e.g. `2 Tank, 4 Heal`). Invalid files are listed under **Invalid templates** with the error and do not abort the command. |
+| `/dflisteventtemplates` | Lists every template: a **Raids** section, then a **Dungeons** section, each alphabetical by display name. Shows the name (the value for `/dfcreateevent`), display name, attendiesRequired, durationInHours and the per-role counts (e.g. `2 Tank, 4 Heal`). Invalid files are listed under **Invalid templates** with the error and do not abort the command. |
+| `/dflistraidtemplates` | Lists raid templates only, alphabetical by display name. Same fields as `/dflisteventtemplates`. |
+| `/dflistdungeontemplates` | Lists dungeon templates only, alphabetical by display name. Same fields as `/dflisteventtemplates`. |
+| `/dfhelp` | Lists every Dungeon Forge command with its parameters and a one-line description. Commands that need the manager role are marked **manager-only**. |
 
 All commands only work in the **dungeon-forge-manage** channel and only for members with the **df-manager** role.
 Answers are ephemeral (only you see them). Errors are explained: unknown event file, bad date/time, date in the past,
@@ -65,7 +68,7 @@ Roles (names are configurable in `global.json`):
 | Role | Purpose |
 | --- | --- |
 | `df-dungeoneer` | may sign up/off by reacting to events – give it to your raiders |
-| `df-manager` | may create, cancel and list events |
+| `df-manager` | may use the manager slash commands (`/dfhelp` lists them) |
 | `df-logs` | may see the log channel |
 
 Text channels (names or ids are configurable):
@@ -119,7 +122,7 @@ Other configuration files in `src/DungeonForge/Configurations/`:
 
 ### 5. Run
 **Visual Studio 2022 (17.14+) / 2026:** open `DungeonForge.sln`, set `DungeonForge` as startup project, press **F5**.
-Configuration files are copied to the output directory on every build (`bin/Debug/net10.0/Configurations` and `EventConfigurations`), so edit them in the project and rebuild/restart.
+Configuration files are copied to the output directory on every build (`bin/Debug/net10.0/Configurations` and `EventConfigurations`, with `Raids` and `Dungeons` kept as subfolders), so edit them in the project and rebuild/restart.
 To provide the token without touching `global.json`: *Debug → DungeonForge Debug Properties → Environment variables* → `DUNGEONFORGE_TOKEN=…`.
 
 **Command line:**
@@ -138,11 +141,12 @@ Slash commands can take a few seconds to show up after the first start.
 
 ## Adding a dungeon / raid
 
-Create `src/DungeonForge/EventConfigurations/<name>.json`. The file name (without `.json`) **must equal** `name`:
+Put a raid in `src/DungeonForge/EventConfigurations/Raids/<name>.json` and a dungeon in `src/DungeonForge/EventConfigurations/Dungeons/<name>.json`. A file directly in `EventConfigurations` (or in any other subfolder, at any depth) is still loaded. The file name (without `.json`) **must equal** `name`, and that name must be unique across all folders.
 
 ```json
 {
   "name": "MoltenCore40",
+  "type": "Raid",
   "displayName": "Molten Core",
   "attendiesRequired": 40,
   "attendyPerRole": { "Tank": 4, "Heal": 9, "Melee-DPS": 13, "Range-DPS": 14 },
@@ -151,46 +155,48 @@ Create `src/DungeonForge/EventConfigurations/<name>.json`. The file name (withou
 }
 ```
 
+* `type` is required: `"Raid"` or `"Dungeon"` (any capitalization). When the file's folder is named `Raids` or `Dungeons`, `type` must match that folder.
 * `attendyPerRole` keys must exist in `subscription-roles.json`; counts must be positive and **add up to `attendiesRequired`**. Only roles listed here get a reaction on the event.
 * `dateTime` is only a template/default. The real date and time come from `/dfcreateevent`.
 * `durationInHours` may have decimals (`1.5`).
-* Files are validated when used (and checked at startup); the error messages tell you exactly what is wrong. `MoltenCore40` is one of the shipped raids; the full list is in the table below.
-* `/dflisteventtemplates` (manage channel, `df-manager`) lists those templates. The **name** is what you pass to `/dfcreateevent`. A file that fails validation is shown in an **Invalid templates** section with the reason, instead of failing the command. A long list is split across messages so each one stays within Discord's length limit.
+* Files are validated when used (and checked at startup); the error messages tell you exactly what is wrong. The shipped templates are listed below.
+* `/dfcreateevent` takes the template **name** (for example `MoltenCore40`) and finds it in any subfolder. Autocomplete shows the type and size, for example `Molten Core (Raid, 40)`.
+* `/dflisteventtemplates`, `/dflistraidtemplates` and `/dflistdungeontemplates` (manage channel, `df-manager`) list those templates. Raids come first, then dungeons; each section is alphabetical by display name. The **name** is what you pass to `/dfcreateevent`. A file that fails validation is shown in an **Invalid templates** section with the reason, instead of failing the command. A long list is split across messages so each one stays within Discord's length limit, and a section heading is kept with the lines that follow it. `/dfhelp` lists every command the same way.
 
 Shipped templates (the role splits and durations are editable defaults):
 
-| Name | Display name | Players | Duration (hours) |
-| --- | --- | --- | --- |
-| `AhnQirajTemple40` | Ahn'Qiraj Temple | 40 | 5 |
-| `BlackfathomDeeps5` | Blackfathom Deeps | 5 | 1.5 |
-| `BlackrockDepths5` | Blackrock Depths | 5 | 3 |
-| `BlackrockSpire10` | Blackrock Spire | 10 | 3 |
-| `BlackwingLair40` | Blackwing Lair | 40 | 4 |
-| `CityOfDalaran5` | City of Dalaran | 5 | 1.5 |
-| `Deadmines5` | Deadmines | 5 | 1 |
-| `DireMaul5` | Dire Maul | 5 | 2 |
-| `ExcavationSiteWetlands5` | Excavation Site: Wetlands | 5 | 1 |
-| `Gnomeregan5` | Gnomeregan | 5 | 1.5 |
-| `HallOfThanes5` | The Hall of Thanes | 5 | 1 |
-| `Maraudon5` | Maraudon | 5 | 2 |
-| `MoltenCore40` | Molten Core | 40 | 4 |
-| `Naxxramas40` | Naxxramas | 40 | 6 |
-| `OnyxiasLair40` | Onyxia's Lair | 40 | 2 |
-| `RagefireChasm5` | Ragefire Chasm | 5 | 1 |
-| `RazorfenDowns5` | Razorfen Downs | 5 | 1.5 |
-| `RazorfenKraul5` | Razorfen Kraul | 5 | 1.5 |
-| `RuinsOfAhnQiraj20` | Ruins of Ahn'Qiraj | 20 | 3 |
-| `RuinsOfLordaeron5` | Ruins of Lordaeron | 5 | 1 |
-| `ScarletMonastery5` | Scarlet Monastery | 5 | 2 |
-| `Scholomance5` | Scholomance | 5 | 2 |
-| `ShadowfangKeep5` | Shadowfang Keep | 5 | 1.5 |
-| `StormwindStockade5` | Stormwind Stockade | 5 | 1 |
-| `Stratholme5` | Stratholme | 5 | 2 |
-| `SunkenTemple5` | Sunken Temple | 5 | 2 |
-| `Uldaman5` | Uldaman | 5 | 1.5 |
-| `WailingCaverns5` | Wailing Caverns | 5 | 1.5 |
-| `ZulFarrak5` | Zul'Farrak | 5 | 1.5 |
-| `ZulGurub20` | Zul'Gurub | 20 | 3 |
+| Name | Type | Display name | Players | Duration (hours) |
+| --- | --- | --- | --- | --- |
+| `AhnQirajTemple40` | Raid | Ahn'Qiraj Temple | 40 | 5 |
+| `BlackfathomDeeps5` | Dungeon | Blackfathom Deeps | 5 | 1.5 |
+| `BlackrockDepths5` | Dungeon | Blackrock Depths | 5 | 3 |
+| `BlackrockSpire10` | Dungeon | Blackrock Spire | 10 | 3 |
+| `BlackwingLair40` | Raid | Blackwing Lair | 40 | 4 |
+| `CityOfDalaran5` | Dungeon | City of Dalaran | 5 | 1.5 |
+| `Deadmines5` | Dungeon | Deadmines | 5 | 1 |
+| `DireMaul5` | Dungeon | Dire Maul | 5 | 2 |
+| `ExcavationSiteWetlands5` | Dungeon | Excavation Site: Wetlands | 5 | 1 |
+| `Gnomeregan5` | Dungeon | Gnomeregan | 5 | 1.5 |
+| `HallOfThanes5` | Dungeon | The Hall of Thanes | 5 | 1 |
+| `Maraudon5` | Dungeon | Maraudon | 5 | 2 |
+| `MoltenCore40` | Raid | Molten Core | 40 | 4 |
+| `Naxxramas40` | Raid | Naxxramas | 40 | 6 |
+| `OnyxiasLair40` | Raid | Onyxia's Lair | 40 | 2 |
+| `RagefireChasm5` | Dungeon | Ragefire Chasm | 5 | 1 |
+| `RazorfenDowns5` | Dungeon | Razorfen Downs | 5 | 1.5 |
+| `RazorfenKraul5` | Dungeon | Razorfen Kraul | 5 | 1.5 |
+| `RuinsOfAhnQiraj20` | Raid | Ruins of Ahn'Qiraj | 20 | 3 |
+| `RuinsOfLordaeron5` | Dungeon | Ruins of Lordaeron | 5 | 1 |
+| `ScarletMonastery5` | Dungeon | Scarlet Monastery | 5 | 2 |
+| `Scholomance5` | Dungeon | Scholomance | 5 | 2 |
+| `ShadowfangKeep5` | Dungeon | Shadowfang Keep | 5 | 1.5 |
+| `StormwindStockade5` | Dungeon | Stormwind Stockade | 5 | 1 |
+| `Stratholme5` | Dungeon | Stratholme | 5 | 2 |
+| `SunkenTemple5` | Dungeon | Sunken Temple | 5 | 2 |
+| `Uldaman5` | Dungeon | Uldaman | 5 | 1.5 |
+| `WailingCaverns5` | Dungeon | Wailing Caverns | 5 | 1.5 |
+| `ZulFarrak5` | Dungeon | Zul'Farrak | 5 | 1.5 |
+| `ZulGurub20` | Raid | Zul'Gurub | 20 | 3 |
 
 Dungeons announced for WoW Forever but not yet in the game (Alcaz Prison, Blackmaw Hold, Drowned City, Krol'dok Stronghold, Shaper's Terrace) and the raids Barrow Deeps and Hyjal Summit are not added yet, because they have no published data.
 
@@ -203,15 +209,15 @@ DungeonForge.sln
 src/DungeonForge/
   Program.cs                      Generic Host + DI wiring, graceful config errors
   Configurations/                 global.json, subscription-roles.json, fixed-subscription-roles.json
-  EventConfigurations/            one file per dungeon/raid
+  EventConfigurations/            Raids/*.json and Dungeons/*.json (a file in the root is allowed too)
   Configuration/                  config models, BotConfiguration, ConfigurationException
-  Models/                         EventDefinition (template), EventInstance + Signup (persisted), RoleDefinition
+  Models/                         EventDefinition (template) + EventType, EventInstance + Signup (persisted), RoleDefinition
   Services/                       ConfigurationLoader, EventDefinitionRepository(+Validator), EventStore,
                                   EventRenderer (embed), SignupLogic (pure rules), EventDateParser,
-                                  EventTemplateListFormatter (template list text),
+                                  EventTemplateListFormatter (template list text), EventTemplateAutocomplete,
                                   EventService (Discord orchestration), BotLog, EventWorkQueue
   Bot/                            BotService (client, gateway handlers, startup), EventCommands (slash commands + autocomplete),
-                                  DiscordHelpers, EmojiKey, ResolvedChannels
+                                  CommandHelpFormatter, DiscordHelpers, EmojiKey, ResolvedChannels
 tests/DungeonForge.Tests/         xUnit tests for the pure logic (run: dotnet test)
 ```
 

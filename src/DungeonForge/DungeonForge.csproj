@@ -17,7 +17,8 @@
   </ItemGroup>
 
   <!-- Configuration files are copied next to the executable so that running from
-       Visual Studio (F5) or `dotnet run` finds them in the output directory. -->
+       Visual Studio (F5) or `dotnet run` finds them in the output directory.
+       EventConfigurations\**\*.json keeps Raids/, Dungeons/ and any deeper folders. -->
   <ItemGroup>
     <None Update="Configurations\**\*.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="EventConfigurations\**\*.json" CopyToOutputDirectory="PreserveNewest" />
