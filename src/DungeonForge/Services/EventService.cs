@@ -455,6 +455,29 @@ public sealed class EventService
         }
     }
 
+    /// <summary>
+    /// Called when Discord deletes a thread (THREAD_DELETE). The stored event is removed.
+    /// Awarded points in the ledger are left as they are; unpaid boss kills go away with the event.
+    /// </summary>
+    public async Task HandleThreadDeletedAsync(ulong threadId)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            var e = _store.FindByThreadId(threadId);
+            if (e is null)
+                return;
+
+            _store.Remove(e);
+            await _store.SaveAsync();
+            _log.Warn($"The thread of event **{e.DisplayName}** ({_renderer.FormatLocal(e)}) was deleted, so the event was removed.");
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     // ------------------------------------------------------------------ startup reconciliation
 
     /// <summary>Prunes finished events and reconciles every stored event with the reactions on its message.</summary>
@@ -486,28 +509,58 @@ public sealed class EventService
 
     private async Task ReconcileOneAsync(EventInstance e)
     {
-        var channel = await OpenEventChannelAsync(e);
-        if (channel is null)
-        {
-            _log.Warn($"Could not reach event **{e.DisplayName}** ({_renderer.FormatLocal(e)}). It was left in the state file.");
-            return;
-        }
-
         IUserMessage? message;
-        try
+        if (e.EmbedInThread && e.ThreadId != 0)
         {
-            message = await channel.GetMessageAsync(e.MessageId) as IUserMessage;
-        }
-        catch (Exception ex) when (DiscordHelpers.IsNotFound(ex))
-        {
-            message = null;
-        }
+            var (threadState, thread) = await ProbeThreadAsync(e.ThreadId);
+            var messageState = DiscordObjectState.Unknown;
+            IUserMessage? threadedMessage = null;
+            if (threadState == DiscordObjectState.Present && thread is not null)
+            {
+                await EnsureActiveAsync(thread);
+                (messageState, threadedMessage) = await ProbeMessageAsync(thread, e.MessageId);
+            }
 
-        if (message is null)
+            if (EventAbsence.ShouldRemoveAfterReconcile(e, threadState, messageState))
+            {
+                _store.Remove(e);
+                var noun = threadState == DiscordObjectState.NotFound ? "thread" : "message";
+                _log.Warn($"The {noun} of event **{e.DisplayName}** ({_renderer.FormatLocal(e)}) no longer exists, so the event was removed.");
+                return;
+            }
+
+            if (thread is null || threadedMessage is null)
+            {
+                _log.Warn($"Could not reach event **{e.DisplayName}** ({_renderer.FormatLocal(e)}). It was left in the state file.");
+                return;
+            }
+
+            message = threadedMessage;
+        }
+        else
         {
-            _store.Remove(e);
-            _log.Warn($"The message of event **{e.DisplayName}** ({_renderer.FormatLocal(e)}) no longer exists; the event was removed.");
-            return;
+            var channel = await OpenEventChannelAsync(e);
+            if (channel is null)
+            {
+                _log.Warn($"Could not reach event **{e.DisplayName}** ({_renderer.FormatLocal(e)}). It was left in the state file.");
+                return;
+            }
+
+            try
+            {
+                message = await channel.GetMessageAsync(e.MessageId) as IUserMessage;
+            }
+            catch (Exception ex) when (DiscordHelpers.IsNotFound(ex))
+            {
+                message = null;
+            }
+
+            if (message is null)
+            {
+                _store.Remove(e);
+                _log.Warn($"The message of event **{e.DisplayName}** ({_renderer.FormatLocal(e)}) no longer exists; the event was removed.");
+                return;
+            }
         }
 
         if (e.Status == EventStatus.Completed)
@@ -658,23 +711,67 @@ public sealed class EventService
 
     private async Task<IThreadChannel?> FindThreadAsync(ulong threadId)
     {
+        var (state, thread) = await ProbeThreadAsync(threadId);
+        return state == DiscordObjectState.Present ? thread : null;
+    }
+
+    /// <summary>
+    /// Cache, then REST. HTTP 404 (Unknown Channel) is <see cref="DiscordObjectState.NotFound"/>.
+    /// Network errors, rate limits and missing permissions are <see cref="DiscordObjectState.Unknown"/>.
+    /// </summary>
+    private async Task<(DiscordObjectState State, IThreadChannel? Thread)> ProbeThreadAsync(ulong threadId)
+    {
         if (threadId == 0)
-            return null;
+            return (DiscordObjectState.Unknown, null);
         if (_client.GetChannel(threadId) is IThreadChannel cached)
-            return cached;
+            return (DiscordObjectState.Present, cached);
 
         try
         {
-            return await _client.Rest.GetChannelAsync(threadId) as IThreadChannel;
+            var channel = await _client.Rest.GetChannelAsync(threadId);
+            if (channel is IThreadChannel thread)
+                return (DiscordObjectState.Present, thread);
+            if (channel is null)
+                return (DiscordObjectState.NotFound, null);
+
+            _log.Warn($"Channel {threadId} exists but is not a thread. The event was left in the state file.");
+            return (DiscordObjectState.Unknown, null);
         }
-        catch (Exception ex) when (DiscordHelpers.IsNotFound(ex))
+        catch (Exception ex) when (EventAbsence.FromException(ex) == DiscordObjectState.NotFound)
         {
-            return null;
+            return (DiscordObjectState.NotFound, null);
         }
         catch (Exception ex)
         {
             _log.Warn($"Could not load thread {threadId}: {ex.Message}");
-            return null;
+            return (DiscordObjectState.Unknown, null);
+        }
+    }
+
+    /// <summary>Null and HTTP 404 (Unknown Message) are not-found. Other failures stay unknown.</summary>
+    private async Task<(DiscordObjectState State, IUserMessage? Message)> ProbeMessageAsync(IMessageChannel channel, ulong messageId)
+    {
+        try
+        {
+            var fetched = await channel.GetMessageAsync(messageId);
+            if (fetched is null)
+                return (DiscordObjectState.NotFound, null);
+            if (fetched is not IUserMessage message)
+            {
+                _log.Warn($"Message {messageId} is not an event embed. The event was left in the state file.");
+                return (DiscordObjectState.Unknown, null);
+            }
+
+            return (DiscordObjectState.Present, message);
+        }
+        catch (Exception ex) when (EventAbsence.FromException(ex) == DiscordObjectState.NotFound)
+        {
+            return (DiscordObjectState.NotFound, null);
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"Could not load message {messageId}: {ex.Message}");
+            return (DiscordObjectState.Unknown, null);
         }
     }
 

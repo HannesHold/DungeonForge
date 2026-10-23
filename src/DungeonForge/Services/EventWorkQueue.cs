@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace DungeonForge.Services;
 
 /// <summary>
-/// Runs gateway-triggered work (reactions, deleted messages) strictly one after another, in arrival order,
+/// Runs gateway-triggered work (reactions, deleted messages, deleted threads) strictly one after another, in arrival order,
 /// off the gateway thread. Work waits until startup reconciliation has finished.
 /// </summary>
 public sealed class EventWorkQueue : BackgroundService

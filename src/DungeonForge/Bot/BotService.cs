@@ -86,6 +86,12 @@ public sealed class BotService : BackgroundService
                 _queue.Enqueue("message deleted", () => _events.HandleMessageDeletedAsync(channel.Id, message.Id));
                 return Task.CompletedTask;
             };
+            // Deleting a thread does not emit MessageDeleted for the messages inside it.
+            _client.ThreadDeleted += thread =>
+            {
+                _queue.Enqueue("thread deleted", () => _events.HandleThreadDeletedAsync(thread.Id));
+                return Task.CompletedTask;
+            };
             _client.MessageReceived += OnMessageReceived;
             _interactions.SlashCommandExecuted += OnSlashCommandExecuted;
 
